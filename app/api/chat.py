@@ -12,10 +12,22 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent.builder import get_agent
 from app.agent.context import AgentContext
 from app.api.schemas import ChatData, ChatRequest, ToolCallInfo, fail, ok
+from app.config.settings import settings
 from app.services.auth import resolve_user
+from app.services.redis_client import AgentRedisKeys, get_redis
 from app.services.session_store import touch_session
 
 router = APIRouter()
+
+
+def _rate_limited(user_id: int) -> bool:
+    """滑动窗口限流：每分钟 N 次（agent:rate:{userId}）。"""
+    r = get_redis()
+    key = AgentRedisKeys.RATE.format(user_id)
+    count = r.incr(key)
+    if count == 1:
+        r.expire(key, AgentRedisKeys.RATE_WINDOW_SECONDS)
+    return count > settings.chat_rate_limit
 
 
 def _extract_tools(messages: list) -> list[ToolCallInfo]:
@@ -37,14 +49,30 @@ def _new_thread_id() -> str:
     return uuid.uuid4().hex
 
 
+def _semantic_sources(content: str):
+    """从 semantic_search 工具结果中解析引用来源，发 SSE source 事件。"""
+    try:
+        data = json.loads(content)
+        for item in data.get("results", []):
+            yield {"event": "source",
+                   "data": json.dumps(
+                       {"type": item.get("type", "movie"), "id": item.get("id"),
+                        "title": item.get("title", ""),
+                        "score": item.get("score")}, ensure_ascii=False)}
+    except (json.JSONDecodeError, AttributeError):
+        return
+
+
 @router.post("/chat")
 async def chat(req: ChatRequest, authorization: str | None = Header(default=None)):
     user = resolve_user(authorization)
+    if _rate_limited(user["userId"]):
+        return fail("发言太频繁了，请稍等一分钟再试")
     thread_id = req.threadId or _new_thread_id()
     touch_session(thread_id, user["userId"], req.message)
 
     agent = get_agent()
-    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id)
+    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"])
     try:
         result = await asyncio.wait_for(
             agent.ainvoke(
@@ -72,11 +100,13 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest, authorization: str | None = Header(default=None)):
     user = resolve_user(authorization)
+    if _rate_limited(user["userId"]):
+        return fail("发言太频繁了，请稍等一分钟再试")
     thread_id = req.threadId or _new_thread_id()
     touch_session(thread_id, user["userId"], req.message)
 
     agent = get_agent()
-    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id)
+    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"])
     config = {"configurable": {"thread_id": thread_id}}
 
     async def gen():
@@ -103,6 +133,9 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                                        "data": json.dumps(
                                            {"name": m.name, "status": "end",
                                             "summary": content[:120]}, ensure_ascii=False)}
+                                if m.name == "semantic_search":
+                                    for s in _semantic_sources(content):
+                                        yield s
             yield {"event": "done",
                    "data": json.dumps({"threadId": thread_id,
                                        "durationMs": int((time.time() - start) * 1000)})}

@@ -3,6 +3,7 @@ langchain-core>=1.2.5
 langchain-openai>=1.2.0
 langgraph>=1.2.0
 langgraph-checkpoint-sqlite>=2.1
+aiosqlite>=0.20
 elasticsearch>=8.15,<9.0
 pymysql>=1.1
 SQLAlchemy>=2.0

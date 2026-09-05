@@ -6,6 +6,10 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from app.config.settings import settings
 
+import aiosqlite
+
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
 
 def create_checkpointer() -> BaseCheckpointSaver:
     if settings.agent_checkpoint == "memory":
@@ -13,9 +17,7 @@ def create_checkpointer() -> BaseCheckpointSaver:
 
         return MemorySaver()
 
-    import aiosqlite
 
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     db_path = Path(settings.checkpoint_db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)

@@ -7,10 +7,10 @@
 | 阶段 | 能力 | 状态 |
 |------|------|------|
 | 1 | 骨架 + 基础对话 + 查询工具（热门电影/热门影评/电影详情/影评列表/电影搜索/影评搜索） | ✅ 已完成 |
-| 2 | ES 语义索引（BGE-M3 向量）+ RAG 混合检索（BM25+knn+RRF） | 待实施 |
-| 3 | 推荐（条件/收藏/场景）+ 电影对比 + 观影计划 | 待实施 |
-| 4 | 影评总结 + 正负面观点分析 + AI 辅助创作/发布 | 待实施 |
-| 5 | 长期记忆（用户画像）+ 热门 tool 统计 + 打磨 | 待实施 |
+| 2 | ES 语义索引（BGE-M3 向量）+ RAG 混合检索（BM25+knn+客户端RRF） | ✅ 已完成 |
+| 3 | 推荐（条件/收藏/场景）+ 电影对比 + 观影计划 | ✅ 已完成 |
+| 4 | 影评总结 + 正负面观点分析 + AI 辅助创作/发布 | ✅ 已完成 |
+| 5 | 长期记忆（用户画像）+ 热门 tool 统计 + 限流 + 单元测试 | ✅ 已完成 |
 
 ## 快速开始
 
@@ -32,9 +32,20 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 |------|------|------|
 | GET | `/api/agent/health` | 健康检查（mysql/redis/es/llm/embedding） |
 | POST | `/api/agent/chat` | 非流式对话（body: `{threadId?, message, extra?}`） |
-| POST | `/api/agent/chat/stream` | SSE 流式对话（event: message/tool/done/error） |
+| POST | `/api/agent/chat/stream` | SSE 流式对话（event: message/tool/source/done/error） |
 | GET | `/api/agent/sessions?current=` | 会话列表（需登录） |
 | DELETE | `/api/agent/sessions/{threadId}` | 删除会话（需登录） |
+| POST | `/api/agent/es/sync?type=all\|movie\|review` | 手动触发 ES 向量索引同步 |
+| POST | `/api/agent/tools/{toolName}` | 直接调用某个工具（调试/快捷能力） |
+| GET | `/api/agent/tool-stats?month=YYYYMM` | 热门 tool 调用排行（Redis ZSet 月维度） |
+| GET | `/api/agent/profile/{userId}` | 用户画像（长期记忆，需登录且仅限本人） |
+
+## ES 语义检索说明
+
+- 索引：`movie_vec` / `review_vec`（dense_vector 1024 维 BGE-M3 + IK 分词文本字段，不动后端原索引）
+- 同步：电影启动全量 + 每日一次；影评增量轮询（5 分钟，游标存 Redis `agent:sync:review:cursor`）
+- 检索：BM25（与后端同加权）+ knn（cosine）+ **客户端 RRF 融合**（ES 8.15 基础版不支持服务端 RRF），ES 异常降级 MySQL LIKE
+- embedding 结果按文本 md5 缓存 Redis 30 天，重同步不重复计费
 
 ## 架构
 
@@ -45,7 +56,7 @@ app/
 ├── tools/        # LangChain 工具（查询六件套起步，按阶段扩充）
 ├── rag/          # BGE-M3 embedding + ES 混合检索（阶段 2）
 ├── services/     # MySQL / Redis / ES / 后端 REST / 认证 / 会话
-├── memory/       # 用户画像长期记忆（阶段 5）
+├── memory/       # 用户画像长期记忆（规则聚合 + 惰性刷新 + 对话偏好提取）
 └── prompts/      # 提示词模板（与代码分离）
 ```
 

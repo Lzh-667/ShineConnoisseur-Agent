@@ -6,3 +6,4 @@ from pydantic import BaseModel
 class AgentContext(BaseModel):
     user_id: int = 0
     thread_id: str = ""
+    token: str = ""  # 后端登录 token（写操作透传用）

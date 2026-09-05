@@ -213,3 +213,39 @@ def get_user_rated_movies(user_id: int) -> list[dict]:
         "SELECT movie_id, rating FROM review WHERE user_id=:uid AND status=1",
         uid=user_id,
     )
+
+
+def get_user_activity_latest(user_id: int) -> str | None:
+    """用户最近一次行为时间（收藏/发影评），画像惰性刷新判定用。"""
+    row = _row(
+        "SELECT GREATEST("
+        " COALESCE((SELECT MAX(create_time) FROM movie_favorite WHERE user_id=:uid), '1970-01-01'),"
+        " COALESCE((SELECT MAX(create_time) FROM review WHERE user_id=:uid), '1970-01-01'),"
+        " COALESCE((SELECT MAX(update_time) FROM review WHERE user_id=:uid), '1970-01-01')"
+        ") AS latest",
+        uid=user_id,
+    )
+    return str(row["latest"]) if row and row["latest"] else None
+
+
+# ---------- ES 向量索引同步 ----------
+
+def get_all_movies_for_sync() -> list[dict]:
+    """全量电影（含已下架，用于清理向量索引）。"""
+    rows = _rows(f"SELECT {MOVIE_COLUMNS}, status FROM movie")
+    return [{**_movie_dict(r), "status": r["status"]} for r in rows]
+
+
+def get_reviews_updated_after(cursor: str | None, limit: int = 100) -> list[dict]:
+    """update_time > cursor 的影评原始行（含 status!=1，用于同步与删除）；cursor 为 None 时取全量。"""
+    sql = (
+        f"SELECT {REVIEW_COLUMNS}, r.status, r.update_time FROM review r"
+        " JOIN user u ON u.id = r.user_id"
+        " JOIN movie m ON m.id = r.movie_id"
+    )
+    params: dict = {"limit": limit}
+    if cursor:
+        sql += " WHERE r.update_time > :cursor"
+        params["cursor"] = cursor
+    sql += " ORDER BY r.update_time LIMIT :limit"
+    return _rows(sql, **params)
