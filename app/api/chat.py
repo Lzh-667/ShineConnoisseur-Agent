@@ -125,7 +125,8 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                                "data": json.dumps({"delta": msg.content}, ensure_ascii=False)}
                 elif mode == "updates":
                     for _node, update in chunk.items():
-                        msgs = update.get("messages", [])
+                        # __start__ 等伪节点的 update 可能为 None
+                        msgs = update.get("messages", []) if isinstance(update, dict) else []
                         for m in msgs:
                             if isinstance(m, ToolMessage):
                                 content = m.content if isinstance(m.content, str) else str(m.content)
