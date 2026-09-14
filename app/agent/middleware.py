@@ -1,9 +1,10 @@
-"""自定义中间件：热门 tool 统计、用户画像注入。
+"""自定义中间件：热门 tool 统计、用户画像注入、token 用量统计。
 
 注意：agent 通过 ainvoke/astream 异步调用，钩子必须同时实现 async 版本。
 """
 
 import logging
+from datetime import datetime
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import SystemMessage
@@ -61,8 +62,46 @@ class ProfileInjectionMiddleware(AgentMiddleware):
 
     def before_model(self, state, runtime):
         self._inject(state, runtime)
-        return None
 
     async def abefore_model(self, state, runtime):
         self._inject(state, runtime)
-        return None
+
+
+class UsageTrackingMiddleware(AgentMiddleware):
+    """每轮模型调用后累计 token 用量（会话/日维度），支撑成本统计。
+
+    DeepSeek 在 usage_metadata 中返回 input_tokens/output_tokens，
+    流式时 langchain-openai 默认开启 stream_usage，聚合后的 AIMessage 同样携带。
+    """
+
+    def _record(self, state, runtime) -> None:
+        try:
+            messages = state.get("messages", [])
+            if not messages:
+                return
+            usage = getattr(messages[-1], "usage_metadata", None) or {}
+            input_tokens = int(usage.get("input_tokens") or 0)
+            output_tokens = int(usage.get("output_tokens") or 0)
+            if input_tokens == 0 and output_tokens == 0:
+                return
+            ctx = runtime.context
+            r = get_redis()
+            if ctx is not None and getattr(ctx, "thread_id", ""):
+                key = AgentRedisKeys.USAGE_SESSION.format(ctx.thread_id)
+                r.hincrby(key, "inputTokens", input_tokens)
+                r.hincrby(key, "outputTokens", output_tokens)
+                r.hincrby(key, "calls", 1)
+                r.expire(key, AgentRedisKeys.USAGE_SESSION_TTL)
+            daily = AgentRedisKeys.USAGE_DAILY.format(datetime.now().strftime("%Y%m%d"))
+            r.hincrby(daily, "inputTokens", input_tokens)
+            r.hincrby(daily, "outputTokens", output_tokens)
+            r.hincrby(daily, "calls", 1)
+            r.expire(daily, AgentRedisKeys.USAGE_DAILY_TTL)
+        except Exception:
+            logger.warning("token 用量统计失败", exc_info=True)
+
+    def after_model(self, state, runtime):
+        self._record(state, runtime)
+
+    async def aafter_model(self, state, runtime):
+        self._record(state, runtime)

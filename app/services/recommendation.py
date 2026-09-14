@@ -71,15 +71,10 @@ def recommend_by_conditions(genres: list[str] | None, min_rating: float = 0,
     exclude_ids = exclude_ids or set()
 
     def _pass(m: dict) -> bool:
-        if m["id"] in exclude_ids:
-            return False
-        if genres and not (_genre_set(m) & set(genres)):
-            return False
-        if region and region not in (m.get("region") or ""):
-            return False
-        if not _in_year_range(m, year_range):
-            return False
-        return True
+        return (m["id"] not in exclude_ids
+                and (not genres or bool(_genre_set(m) & set(genres)))
+                and (not region or region in (m.get("region") or ""))
+                and _in_year_range(m, year_range))
 
     strict = [m for m in _candidate_pool()
               if _pass(m) and m.get("rating", 0) > 0 and m.get("rating", 0) >= min_rating]

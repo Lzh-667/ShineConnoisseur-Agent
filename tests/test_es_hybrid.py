@@ -1,6 +1,49 @@
-"""混合检索 RRF 融合纯逻辑测试。"""
+"""混合检索 RRF 融合与检索函数测试（mock ES 客户端）。"""
 
-from app.rag.es_hybrid import _rrf_merge
+from app.rag.es_hybrid import _rrf_merge, bm25_search, knn_search
+
+
+class FakeES:
+    """记录查询参数的最小 ES 客户端。"""
+
+    def __init__(self, hits=None):
+        self.calls = []
+        self.hits = hits or []
+
+    def search(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"hits": {"hits": self.hits}}
+
+
+def test_bm25_search_builds_query(monkeypatch):
+    es = FakeES()
+    monkeypatch.setattr("app.rag.es_hybrid.get_es", lambda: es)
+    bm25_search("越狱", "movie_vec", 5)
+    call = es.calls[0]
+    assert call["size"] == 5
+    assert call["source"] == ["id", "title", "movieTitle"]
+    body = call["query"]["bool"]
+    assert body["must"][0]["multi_match"]["query"] == "越狱"
+    assert body["filter"][0] == {"term": {"status": 1}}
+
+
+def test_bm25_search_maps_hits(monkeypatch):
+    es = FakeES(hits=[{"_source": {"id": 1, "title": "肖申克的救赎", "movieTitle": ""}}])
+    monkeypatch.setattr("app.rag.es_hybrid.get_es", lambda: es)
+    hits = bm25_search("越狱", "movie_vec", 5)
+    assert hits[0] == {"id": 1, "title": "肖申克的救赎", "movieTitle": "", "score": 0.0}
+
+
+def test_knn_search_uses_embedding(monkeypatch):
+    es = FakeES()
+    monkeypatch.setattr("app.rag.es_hybrid.get_es", lambda: es)
+    monkeypatch.setattr("app.rag.es_hybrid.embed_texts",
+                        lambda texts: [[0.1] * 1024 for _ in texts])
+    knn_search("悬疑烧脑片", "movie_vec", 3)
+    knn = es.calls[0]["knn"][0]
+    assert knn["field"] == "content_embedding"
+    assert len(knn["query_vector"]) == 1024
+    assert knn["k"] == 3
 
 
 def test_rrf_merge_basic():

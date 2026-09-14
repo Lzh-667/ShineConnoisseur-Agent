@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# DTZ005: 统计 key 用本地时间（月维度排行），非业务时间戳，无需 tz
+# B008: FastAPI Body(default={}) 惯用法
+# BLE001: 服务端工具/接口的兜底降级（ES→MySQL、LLM 异常→用户友好提示）统一 except Exception，
+#         代码中无裸 except:
+ignore = ["DTZ005", "B008", "BLE001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

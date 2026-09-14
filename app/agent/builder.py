@@ -8,7 +8,11 @@ from langchain.agents.middleware import SummarizationMiddleware
 from app.agent.checkpointer import create_checkpointer
 from app.agent.context import AgentContext
 from app.agent.llm import get_llm
-from app.agent.middleware import ProfileInjectionMiddleware, ToolUsageMiddleware
+from app.agent.middleware import (
+    ProfileInjectionMiddleware,
+    ToolUsageMiddleware,
+    UsageTrackingMiddleware,
+)
 from app.agent.system_prompt import load_system_prompt
 from app.tools import TOOLS
 
@@ -22,6 +26,7 @@ def get_agent():
         middleware=[
             ProfileInjectionMiddleware(),
             ToolUsageMiddleware(),
+            UsageTrackingMiddleware(),
             SummarizationMiddleware(
                 model=get_llm(),
                 trigger=("tokens", 60000),

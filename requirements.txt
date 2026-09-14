@@ -17,3 +17,4 @@ python-dotenv>=1.0
 numpy>=1.26
 sse-starlette>=2.1
 pytest>=8.0
+ruff>=0.16

@@ -8,7 +8,6 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
 
 from app.rag import es_hybrid
 from app.rag.es_hybrid import REVIEW_VEC_INDEX

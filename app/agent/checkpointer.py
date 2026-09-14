@@ -2,13 +2,11 @@
 
 from pathlib import Path
 
+import aiosqlite
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.config.settings import settings
-
-import aiosqlite
-
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 
 def create_checkpointer() -> BaseCheckpointSaver:

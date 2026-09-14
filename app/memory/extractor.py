@@ -5,11 +5,11 @@
 - 对话偏好（save_preference）合并进 scene/watch 字段，confidence=high 才进画像
 """
 
-from datetime import datetime
 
 from app.memory import store
 from app.memory.models import AgentUserProfile
-from app.services import mysql, profile as profile_service
+from app.services import mysql
+from app.services import profile as profile_service
 
 
 def build_profile(user_id: int) -> AgentUserProfile:

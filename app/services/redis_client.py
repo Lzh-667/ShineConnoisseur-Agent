@@ -22,11 +22,16 @@ class AgentRedisKeys:
     EMBED_CACHE = "agent:sync:embed:cache:{}"
     # 聊天限流计数
     RATE = "agent:rate:{}"
+    # token 用量统计 Hash（会话/日维度）
+    USAGE_SESSION = "agent:usage:session:{}"
+    USAGE_DAILY = "agent:usage:daily:{}"
 
     SESSION_META_TTL = 7 * 24 * 3600
     PROFILE_TTL = 30 * 60
     EMBED_CACHE_TTL = 30 * 24 * 3600
     RATE_WINDOW_SECONDS = 60
+    USAGE_SESSION_TTL = 7 * 24 * 3600
+    USAGE_DAILY_TTL = 31 * 24 * 3600
 
     @classmethod
     def tool_stats_key(cls, dt: datetime | None = None) -> str:

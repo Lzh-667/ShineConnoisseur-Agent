@@ -2,6 +2,8 @@
 
 电影影评社区平台的 AI Agent 服务，基于 **LangChain 1.x（create_agent）** + FastAPI。
 
+[![CI](https://github.com/Lzh-667/ShineConnoisseur-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Lzh-667/ShineConnoisseur-Agent/actions/workflows/ci.yml)
+
 ## 能力规划（分阶段实施）
 
 | 阶段 | 能力 | 状态 |
@@ -38,7 +40,31 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 | POST | `/api/agent/es/sync?type=all\|movie\|review` | 手动触发 ES 向量索引同步 |
 | POST | `/api/agent/tools/{toolName}` | 直接调用某个工具（调试/快捷能力） |
 | GET | `/api/agent/tool-stats?month=YYYYMM` | 热门 tool 调用排行（Redis ZSet 月维度） |
+| GET | `/api/agent/usage/session/{threadId}` | 单会话 token 用量与估算成本 |
+| GET | `/api/agent/usage/daily?days=7` | 最近 N 天全站 token 用量与估算成本 |
 | GET | `/api/agent/profile/{userId}` | 用户画像（长期记忆，需登录且仅限本人） |
+
+## 测试与 CI
+
+```bash
+.venv/Scripts/ruff check app tests scripts run.py   # lint
+.venv/Scripts/python -m pytest -q                   # 76 个单测，全部 mock 外部依赖
+```
+
+GitHub Actions（`.github/workflows/ci.yml`）：push/PR 时自动跑 lint + pytest，不依赖任何中间件。
+
+测试分层：工具层（mock MySQL/Redis/ES/LLM，覆盖降级分支）、API 层（TestClient + FakeAgent，覆盖限流/SSE/鉴权）、
+RRF 纯逻辑、token 用量统计。
+
+## RAG 评估
+
+```bash
+.venv/Scripts/python scripts/eval_rag.py             # 混合 vs BM25 vs 向量：延迟 + LLM 判官命中率
+.venv/Scripts/python scripts/eval_rag.py --skip-judge
+```
+
+需 ES 向量索引已同步。数据集 `scripts/eval_dataset.json`（30 条自然语言查询），
+LLM 判官逐条判断「检索结果能否回答查询」，输出各方法平均/P50/P95 延迟与命中率（`--out` 可导出 JSON）。
 
 ## ES 语义检索说明
 

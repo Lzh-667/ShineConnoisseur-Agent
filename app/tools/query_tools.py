@@ -6,10 +6,9 @@
 - 电影详情/影评列表：MySQL（Cache-Aside 同构，Redis 有缓存先读缓存）
 """
 
-from langchain.tools import ToolRuntime, tool
+from langchain.tools import tool
 
 from app.services import es_client, mysql
-from app.services.es_client import MOVIE_INDEX, REVIEW_INDEX, get_es
 from app.services.redis_client import get_redis
 from app.tools.common import to_error, to_json
 

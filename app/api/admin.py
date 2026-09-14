@@ -1,7 +1,7 @@
-"""运维接口：健康检查、ES 同步、工具直调、热门 tool 统计。"""
+"""运维接口：健康检查、ES 同步、工具直调、热门 tool 统计、token 用量。"""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Body
 
@@ -12,6 +12,21 @@ from app.services.redis_client import AgentRedisKeys, get_redis
 from app.tools import TOOLS_BY_NAME
 
 router = APIRouter()
+
+
+def _usage_view(label: str, data: dict) -> dict:
+    """Redis Hash 用量数据 → 视图（含按价格估算的成本）。"""
+    input_tokens = int(data.get("inputTokens") or 0)
+    output_tokens = int(data.get("outputTokens") or 0)
+    cost = (input_tokens * settings.deepseek_input_price
+            + output_tokens * settings.deepseek_output_price) / 1_000_000
+    return {
+        "label": label,
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "calls": int(data.get("calls") or 0),
+        "estimatedCost": round(cost, 6),
+    }
 
 
 @router.get("/health")
@@ -65,6 +80,28 @@ async def tool_stats(month: str | None = None):
         "month": month or datetime.now().strftime("%Y%m"),
         "stats": [{"tool": name, "count": int(score)} for name, score in items],
     })
+
+
+@router.get("/usage/session/{thread_id}")
+async def usage_session(thread_id: str):
+    """单会话 token 用量（含估算成本）。"""
+    data = get_redis().hgetall(AgentRedisKeys.USAGE_SESSION.format(thread_id))
+    if not data:
+        return fail("该会话暂无 token 用量数据")
+    return ok(_usage_view(thread_id, data))
+
+
+@router.get("/usage/daily")
+async def usage_daily(days: int = 7):
+    """最近 N 天全站 token 用量（含估算成本）。"""
+    r = get_redis()
+    items = []
+    for i in range(days):
+        day = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        data = r.hgetall(AgentRedisKeys.USAGE_DAILY.format(day))
+        if data:
+            items.append(_usage_view(day, data))
+    return ok({"days": items})
 
 
 @router.post("/tools/{tool_name}")

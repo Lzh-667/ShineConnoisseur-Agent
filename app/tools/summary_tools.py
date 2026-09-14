@@ -79,8 +79,7 @@ def _parse_json(text: str) -> dict | None:
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.strip("`")
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
+        cleaned = cleaned.removeprefix("json")
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:

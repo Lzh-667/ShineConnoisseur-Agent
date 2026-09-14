@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-v4-pro"
     deepseek_reasoner_model: str = "deepseek-v4-flash"
+    # 计费（元/百万 token，按 DeepSeek 官网当前价格填写）
+    deepseek_input_price: float = 0.0
+    deepseek_output_price: float = 0.0
 
     # Embedding (SiliconFlow BGE-M3)
     siliconflow_api_key: str = ""

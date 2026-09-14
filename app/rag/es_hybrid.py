@@ -5,7 +5,6 @@
 - hybrid_search()：BM25（与后端同加权）+ knn（cosine）+ RRF 融合，ES 异常降级 MySQL LIKE
 """
 
-from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
 from app.rag.embeddings import embed_texts
@@ -163,49 +162,62 @@ def _rrf_merge(hit_lists: list[list[dict]], top_k: int) -> list[dict]:
     return [{**docs[doc_id], "score": round(score, 4)} for doc_id, score in ranked]
 
 
-def hybrid_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
-                  genre: str | None = None, region: str | None = None,
-                  spoiler: int | None = None) -> list[dict]:
-    """BM25 + knn + 客户端 RRF 混合检索，返回 [{id, title, movieTitle, score}]（融合分降序）。"""
+def _to_hits(resp) -> list[dict]:
+    out = []
+    for h in resp["hits"]["hits"]:
+        src = h["_source"]
+        out.append({
+            "id": src["id"],
+            "title": src.get("title") or src.get("movieTitle") or "",
+            "movieTitle": src.get("movieTitle", ""),
+            "score": 0.0,
+        })
+    return out
+
+
+def bm25_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
+                genre: str | None = None, region: str | None = None,
+                spoiler: int | None = None) -> list[dict]:
+    """BM25 关键词路（加权与后端一致），返回 [{id, title, movieTitle, score}]。"""
     es = get_es()
     fields = MOVIE_BM25_FIELDS if index == MOVIE_VEC_INDEX else REVIEW_BM25_FIELDS
     filters = _build_filter(index, genre, region, spoiler)
-    candidate_size = min(top_k * 2, 100)
-
-    def _to_hits(resp) -> list[dict]:
-        out = []
-        for h in resp["hits"]["hits"]:
-            src = h["_source"]
-            out.append({
-                "id": src["id"],
-                "title": src.get("title") or src.get("movieTitle") or "",
-                "movieTitle": src.get("movieTitle", ""),
-                "score": 0.0,
-            })
-        return out
-
-    # 1) BM25 路（与后端同加权）
-    bm25 = {"bool": {
+    query = {"bool": {
         "must": [{"multi_match": {"query": query_text, "fields": fields}}],
         "filter": filters,
     }}
-    bm25_resp = es.search(index=index, query=bm25, size=candidate_size,
-                          source=["id", "title", "movieTitle"])
+    resp = es.search(index=index, query=query, size=top_k,
+                     source=["id", "title", "movieTitle"])
+    return _to_hits(resp)
 
-    # 2) 向量路（knn + 独立 filter）
+
+def knn_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
+               genre: str | None = None, region: str | None = None,
+               spoiler: int | None = None) -> list[dict]:
+    """向量语义路（cosine），返回 [{id, title, movieTitle, score}]。"""
+    es = get_es()
+    filters = _build_filter(index, genre, region, spoiler)
     qvec = embed_texts([query_text])[0]
     knn = [{
         "field": "content_embedding",
         "query_vector": qvec,
-        "k": candidate_size,
+        "k": top_k,
         "num_candidates": NUM_CANDIDATES,
         "filter": {"bool": {"filter": filters}},
     }]
-    knn_resp = es.search(index=index, knn=knn, size=candidate_size,
-                         source=["id", "title", "movieTitle"])
+    resp = es.search(index=index, knn=knn, size=top_k,
+                     source=["id", "title", "movieTitle"])
+    return _to_hits(resp)
 
-    # 3) RRF 融合
-    return _rrf_merge([_to_hits(bm25_resp), _to_hits(knn_resp)], top_k)
+
+def hybrid_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
+                  genre: str | None = None, region: str | None = None,
+                  spoiler: int | None = None) -> list[dict]:
+    """BM25 + knn + 客户端 RRF 混合检索，返回 [{id, title, movieTitle, score}]（融合分降序）。"""
+    candidate_size = min(top_k * 2, 100)
+    bm25_hits = bm25_search(query_text, index, candidate_size, genre, region, spoiler)
+    knn_hits = knn_search(query_text, index, candidate_size, genre, region, spoiler)
+    return _rrf_merge([bm25_hits, knn_hits], top_k)
 
 
 def hybrid_search_with_fallback(query_text: str, index: str = MOVIE_VEC_INDEX,

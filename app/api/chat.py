@@ -82,7 +82,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
             ),
             timeout=300,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return fail("AI 响应超时，请稍后重试")
     except Exception as e:
         return fail(f"AI 服务异常：{e}")
@@ -124,7 +124,7 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                         yield {"event": "message",
                                "data": json.dumps({"delta": msg.content}, ensure_ascii=False)}
                 elif mode == "updates":
-                    for _node, update in chunk.items():
+                    for update in chunk.values():
                         # __start__ 等伪节点的 update 可能为 None
                         msgs = update.get("messages", []) if isinstance(update, dict) else []
                         for m in msgs:

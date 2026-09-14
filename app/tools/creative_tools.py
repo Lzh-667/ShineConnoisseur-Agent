@@ -6,7 +6,6 @@ from app.agent.llm import call_llm, get_llm
 from app.agent.system_prompt import load_prompt
 from app.services import mysql
 from app.services.backend_api import post_backend
-from app.tools.common import to_json
 
 
 def _movie_context(movie_id: int) -> tuple[dict | None, str]:
