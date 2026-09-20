@@ -5,7 +5,7 @@
 - hybrid_search()：BM25（与后端同加权）+ knn（cosine）+ RRF 融合，ES 异常降级 MySQL LIKE
 """
 
-from elasticsearch.helpers import bulk
+from elasticsearch.helpers import bulk, scan
 
 from app.rag.embeddings import embed_texts
 from app.rag.index_templates import MOVIE_VEC_INDEX_BODY, REVIEW_VEC_INDEX_BODY
@@ -118,17 +118,11 @@ def index_doc_count(index: str) -> int:
     return get_es().count(index=index)["count"]
 
 
-def list_index_ids(index: str, size: int = 10000) -> set[int]:
+def list_index_ids(index: str) -> set[int]:
     """列出索引中全部文档 id（用于清理已下架/删除的文档）。"""
     es = get_es()
     ids = set()
-    resp = es.search(
-        index=index,
-        query={"match_all": {}},
-        size=size,
-        source=False,
-    )
-    for h in resp["hits"]["hits"]:
+    for h in scan(es, index=index, query={"query": {"match_all": {}}}, source=False):
         ids.add(int(h["_id"]))
     return ids
 

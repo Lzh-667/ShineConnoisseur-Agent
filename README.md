@@ -28,7 +28,9 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 
 ## 接口
 
-统一响应格式 `{success, errorMsg, data, total}`（与后端一致），认证 header `authorization: <token>`（后端登录 token，无 Bearer）。
+统一响应格式 `{success, errorMsg, data, total}`（与后端一致）。普通聊天使用用户登录
+`authorization` token；管理接口必须使用后端管理员登录产生的 token。两者均兼容裸 token 和
+`Bearer <token>` 形式。游客首次聊天会得到 `HttpOnly` 的 `agent_guest_id` cookie，用于隔离其会话。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -43,6 +45,10 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 | GET | `/api/agent/usage/session/{threadId}` | 单会话 token 用量与估算成本 |
 | GET | `/api/agent/usage/daily?days=7` | 最近 N 天全站 token 用量与估算成本 |
 | GET | `/api/agent/profile/{userId}` | 用户画像（长期记忆，需登录且仅限本人） |
+
+会话安全约定：新会话必须省略 `threadId`，由服务端生成；后续请求只能使用属于当前登录用户（或当前游客 cookie）的既有会话。删除会话会同时删除 LangGraph checkpoint 历史。
+
+管理接口全部要求管理员认证。`POST /api/agent/tools/{toolName}` 默认关闭，仅在受控调试环境把 `ADMIN_TOOL_INVOKE_ENABLED=true` 后可用。
 
 ## 测试与 CI
 

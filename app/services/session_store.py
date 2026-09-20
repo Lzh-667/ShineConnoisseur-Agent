@@ -5,7 +5,7 @@ import time
 from app.services.redis_client import AgentRedisKeys, get_redis
 
 
-def touch_session(thread_id: str, user_id: int, message: str) -> None:
+def touch_session(thread_id: str, owner_id: str, message: str) -> None:
     """新建或续期会话元信息；新会话用首条消息生成标题。"""
     r = get_redis()
     key = AgentRedisKeys.SESSION_META.format(thread_id)
@@ -13,7 +13,7 @@ def touch_session(thread_id: str, user_id: int, message: str) -> None:
     if not r.exists(key):
         title = message.strip().replace("\n", " ")[:20] or "新对话"
         r.hset(key, mapping={
-            "userId": user_id,
+            "ownerId": owner_id,
             "title": title,
             "messageCount": 1,
             "createdAt": now,
@@ -24,37 +24,40 @@ def touch_session(thread_id: str, user_id: int, message: str) -> None:
         r.hincrby(key, "messageCount", 1)
         r.hset(key, "updatedAt", now)
         r.expire(key, AgentRedisKeys.SESSION_META_TTL)
+    r.zadd(AgentRedisKeys.SESSION_OWNER_INDEX.format(owner_id), {thread_id: now})
+    r.expire(AgentRedisKeys.SESSION_OWNER_INDEX.format(owner_id),
+             AgentRedisKeys.SESSION_META_TTL)
 
 
 def get_session(thread_id: str) -> dict | None:
     return get_redis().hgetall(AgentRedisKeys.SESSION_META.format(thread_id)) or None
 
 
-def list_sessions(user_id: int, current: int = 1) -> tuple[list[dict], int]:
-    """列出某用户会话。数据量小，直接 SCAN 匹配 + 内存过滤（避免 KEYS 阻塞）。"""
+def list_sessions(owner_id: str, current: int = 1) -> tuple[list[dict], int]:
+    """按 owner 索引分页读取会话，避免扫描所有用户的 Redis key。"""
     r = get_redis()
-    pattern = AgentRedisKeys.SESSION_META.format("*")
     sessions = []
-    cursor = 0
-    while True:
-        cursor, keys = r.scan(cursor, match=pattern, count=200)
-        for k in keys:
-            meta = r.hgetall(k)
-            if meta and str(meta.get("userId")) == str(user_id):
-                sessions.append({
-                    "threadId": k.rsplit(":", 1)[-1],
-                    "title": meta.get("title", ""),
-                    "messageCount": int(meta.get("messageCount", 0)),
-                    "createdAt": int(meta.get("createdAt", 0)),
-                    "updatedAt": int(meta.get("updatedAt", 0)),
-                })
-        if cursor == 0:
-            break
-    sessions.sort(key=lambda s: s["updatedAt"], reverse=True)
+    index_key = AgentRedisKeys.SESSION_OWNER_INDEX.format(owner_id)
+    thread_ids = r.zrevrange(index_key, 0, -1)
+    for thread_id in thread_ids:
+        meta = r.hgetall(AgentRedisKeys.SESSION_META.format(thread_id))
+        if meta and meta.get("ownerId") == owner_id:
+            sessions.append({
+                "threadId": thread_id,
+                "title": meta.get("title", ""),
+                "messageCount": int(meta.get("messageCount", 0)),
+                "createdAt": int(meta.get("createdAt", 0)),
+                "updatedAt": int(meta.get("updatedAt", 0)),
+            })
+        elif thread_id:
+            # Hash 已过期时清除索引中的孤儿成员。
+            r.zrem(index_key, thread_id)
     total = len(sessions)
     page = sessions[(current - 1) * 10: current * 10]
     return page, total
 
 
-def delete_session(thread_id: str) -> None:
-    get_redis().delete(AgentRedisKeys.SESSION_META.format(thread_id))
+def delete_session(thread_id: str, owner_id: str) -> None:
+    r = get_redis()
+    r.delete(AgentRedisKeys.SESSION_META.format(thread_id))
+    r.zrem(AgentRedisKeys.SESSION_OWNER_INDEX.format(owner_id), thread_id)

@@ -1,8 +1,9 @@
 """能力6/9：RAG 语义检索工具（ES BM25+knn+RRF 混合检索）。"""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from langchain.tools import tool
+from pydantic import Field
 
 from app.rag.es_hybrid import (
     MOVIE_VEC_INDEX,
@@ -14,8 +15,9 @@ from app.tools.common import to_json
 
 
 @tool
-def semantic_search(query: str, index: Literal["movie", "review"] = "movie",
-                    top_k: int = 5, genre: str | None = None,
+def semantic_search(query: Annotated[str, Field(min_length=1, max_length=300)],
+                    index: Literal["movie", "review"] = "movie",
+                    top_k: Annotated[int, Field(ge=1, le=20)] = 5, genre: str | None = None,
                     region: str | None = None, spoiler: int | None = None) -> str:
     """语义检索：按意思（不要求关键词完全匹配）搜索电影或影评，支持语义相近的表达，
     如「时间旅行」「穿越时空」能互相命中。

@@ -76,14 +76,15 @@ def recommend_by_conditions(genres: list[str] | None, min_rating: float = 0,
                 and (not region or region in (m.get("region") or ""))
                 and _in_year_range(m, year_range))
 
-    strict = [m for m in _candidate_pool()
+    pool = _candidate_pool()
+    strict = [m for m in pool
               if _pass(m) and m.get("rating", 0) > 0 and m.get("rating", 0) >= min_rating]
     strict.sort(key=hot_score, reverse=True)
 
     if len(strict) >= count:
         return [_brief(m) for m in strict[:count]]
 
-    unrated = [m for m in _candidate_pool() if _pass(m) and m.get("rating", 0) == 0]
+    unrated = [m for m in pool if _pass(m) and m.get("rating", 0) == 0]
     unrated.sort(key=hot_score, reverse=True)
     merged = strict + unrated
     return [_brief(m, no_rating=m.get("rating", 0) == 0) for m in merged[:count]]

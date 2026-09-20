@@ -1,6 +1,9 @@
 """能力4：AI 辅助创作（影评草稿/标题）与发布（走后端 REST）。"""
 
+from typing import Annotated, Literal
+
 from langchain.tools import ToolRuntime, tool
+from pydantic import Field
 
 from app.agent.llm import call_llm, get_llm
 from app.agent.system_prompt import load_prompt
@@ -28,8 +31,9 @@ def _movie_context(movie_id: int) -> tuple[dict | None, str]:
 
 
 @tool
-def draft_review(movie_id: int, user_prompt: str | None = None,
-                 rating: int | None = None) -> str:
+def draft_review(movie_id: Annotated[int, Field(gt=0)],
+                 user_prompt: Annotated[str | None, Field(max_length=1_000)] = None,
+                 rating: Annotated[int | None, Field(ge=1, le=10)] = None) -> str:
     """根据电影信息和站内已有影评，帮用户起草一篇 200-400 字的影评。
     参数 movie_id 为电影 id；user_prompt 为用户的要求（如 风格/角度/字数/想强调的点）；
     rating 可选，用户想给的评分（1-10），草稿口吻会与之匹配。"""
@@ -47,7 +51,8 @@ def draft_review(movie_id: int, user_prompt: str | None = None,
 
 
 @tool
-def generate_review_title(movie_id: int, content: str | None = None) -> str:
+def generate_review_title(movie_id: Annotated[int, Field(gt=0)],
+                          content: Annotated[str | None, Field(max_length=5_000)] = None) -> str:
     """为影评起标题：给出 3 个候选标题。参数 movie_id 为电影 id；
     content 可选，影评正文（有则结合正文起题）。"""
     movie = mysql.get_movie_by_id(movie_id)
@@ -64,8 +69,11 @@ def generate_review_title(movie_id: int, content: str | None = None) -> str:
 
 
 @tool
-def publish_review(runtime: ToolRuntime, movie_id: int, title: str, content: str,
-                   rating: int, spoiler: int = 0) -> str:
+def publish_review(runtime: ToolRuntime, movie_id: Annotated[int, Field(gt=0)],
+                   title: Annotated[str, Field(min_length=1, max_length=100)],
+                   content: Annotated[str, Field(min_length=1, max_length=10_000)],
+                   rating: Annotated[int, Field(ge=1, le=10)],
+                   spoiler: Literal[0, 1] = 0) -> str:
     """把影评发布到站内（真实写入后端数据库）。**调用前必须已获得用户的明确确认**，
     并向用户复述将要发布的内容概要。参数：movie_id 电影 id；title 标题；content 正文；
     rating 评分 1-10；spoiler 是否剧透 0否/1是。发布后电影评分计数会更新。"""
@@ -74,7 +82,6 @@ def publish_review(runtime: ToolRuntime, movie_id: int, title: str, content: str
         return "发布失败：当前是游客，请先登录后再发布影评"
     if not (1 <= rating <= 10):
         return "发布失败：评分必须在 1-10 之间"
-
     resp = post_backend(
         f"/reviews/publish/{movie_id}",
         body={"rating": rating, "title": title, "content": content, "spoiler": spoiler},

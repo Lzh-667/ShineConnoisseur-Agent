@@ -12,12 +12,17 @@ class AgentRedisKeys:
 
     # 会话元信息 Hash: {userId, title, messageCount, createdAt, updatedAt}
     SESSION_META = "agent:session:meta:{}"
+    # 用户/游客会话索引 ZSet，score = 最后活跃时间
+    SESSION_OWNER_INDEX = "agent:session:owner:{}"
     # 热门 tool 统计 ZSet（月维度），score = 调用次数
     TOOL_STATS = "agent:tool:stats:{}"
     # 用户画像缓存 String(JSON)
     PROFILE = "agent:profile:{}"
+    # 影评洞察缓存，key 已包含影评内容摘要 hash，数据变化会自动失效
+    REVIEW_INSIGHT = "agent:review:insight:{}"
     # review_vec 增量同步游标
     SYNC_REVIEW_CURSOR = "agent:sync:review:cursor"
+    SYNC_LOCK = "agent:sync:lock:{}"
     # embedding 结果缓存（按文本 md5）
     EMBED_CACHE = "agent:sync:embed:cache:{}"
     # 聊天限流计数
@@ -28,14 +33,16 @@ class AgentRedisKeys:
 
     SESSION_META_TTL = 7 * 24 * 3600
     PROFILE_TTL = 30 * 60
+    REVIEW_INSIGHT_TTL = 24 * 3600
     EMBED_CACHE_TTL = 30 * 24 * 3600
     RATE_WINDOW_SECONDS = 60
     USAGE_SESSION_TTL = 7 * 24 * 3600
     USAGE_DAILY_TTL = 31 * 24 * 3600
 
     @classmethod
-    def tool_stats_key(cls, dt: datetime | None = None) -> str:
-        return cls.TOOL_STATS.format((dt or datetime.now()).strftime("%Y%m"))
+    def tool_stats_key(cls, dt: datetime | str | None = None) -> str:
+        month = dt if isinstance(dt, str) else (dt or datetime.now()).strftime("%Y%m")
+        return cls.TOOL_STATS.format(month)
 
 
 _pool: redis.Redis | None = None

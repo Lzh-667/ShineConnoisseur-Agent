@@ -9,6 +9,7 @@ from app.config.settings import settings
 from app.services import mysql
 
 USER = {"userId": 1, "username": "u", "nickname": "n", "avatar": "", "token": "tok"}
+THREAD_ID = "a" * 32
 
 
 class FakeAgent:
@@ -37,6 +38,7 @@ def _patch_chat_deps(monkeypatch, fake_redis, agent):
     monkeypatch.setattr("app.api.chat.resolve_user", lambda token: USER)
     monkeypatch.setattr("app.api.chat.get_redis", lambda: fake_redis)
     monkeypatch.setattr("app.api.chat.touch_session", lambda *a, **kw: None)
+    monkeypatch.setattr("app.api.chat.get_session", lambda tid: {"ownerId": "user:1"})
     monkeypatch.setattr("app.api.chat.get_agent", lambda: agent)
 
 
@@ -46,11 +48,11 @@ def _patch_chat_deps(monkeypatch, fake_redis, agent):
 def test_chat_ok(client, monkeypatch, fake_redis, no_rate_limit):
     _patch_chat_deps(monkeypatch, fake_redis, FakeAgent())
     resp = client.post("/api/agent/chat",
-                       json={"threadId": "abc", "message": "推荐一部电影"},
+                       json={"threadId": THREAD_ID, "message": "推荐一部电影"},
                        headers={"authorization": "tok"})
     body = resp.json()
     assert resp.status_code == 200 and body["success"]
-    assert body["data"]["threadId"] == "abc"
+    assert body["data"]["threadId"] == THREAD_ID
     assert "光影助手" in body["data"]["reply"]
 
 
@@ -64,7 +66,7 @@ def test_chat_rate_limited(client, monkeypatch, fake_redis):
     monkeypatch.setattr(settings, "chat_rate_limit", 10)
     monkeypatch.setattr("app.api.chat.resolve_user", lambda token: USER)
     monkeypatch.setattr("app.api.chat.get_redis", lambda: fake_redis)
-    fake_redis.counters[f"agent:rate:{USER['userId']}"] = 99
+    fake_redis.counters[f"agent:rate:user:{USER['userId']}"] = 99
     body = client.post("/api/agent/chat", json={"message": "hi"}).json()
     assert not body["success"] and "频繁" in body["errorMsg"]
 
@@ -86,7 +88,7 @@ def test_chat_internal_error(client, monkeypatch, fake_redis, no_rate_limit):
 
     _patch_chat_deps(monkeypatch, fake_redis, BadAgent())
     body = client.post("/api/agent/chat", json={"message": "hi"}).json()
-    assert not body["success"] and "llm boom" in body["errorMsg"]
+    assert not body["success"] and "暂时不可用" in body["errorMsg"]
 
 
 def test_chat_tool_calls_extracted(client, monkeypatch, fake_redis, no_rate_limit):
@@ -125,13 +127,13 @@ def test_chat_stream_events(client, monkeypatch, fake_redis, no_rate_limit):
     ]
     _patch_chat_deps(monkeypatch, fake_redis, FakeAgent(stream_events=events))
     with client.stream("POST", "/api/agent/chat/stream",
-                       json={"threadId": "t1", "message": "hi"}) as resp:
+                       json={"threadId": THREAD_ID, "message": "hi"}) as resp:
         text = "".join(resp.iter_text())
     assert "event: message" in text
     assert '"delta": "你"' in text and '"delta": "好"' in text
     assert "event: tool" in text and "semantic_search" in text
     assert "event: source" in text and "肖申克的救赎" in text
-    assert "event: done" in text and '"threadId": "t1"' in text
+    assert "event: done" in text and f'"threadId": "{THREAD_ID}"' in text
 
 
 def test_chat_stream_error(client, monkeypatch, fake_redis, no_rate_limit):
@@ -144,14 +146,32 @@ def test_chat_stream_error(client, monkeypatch, fake_redis, no_rate_limit):
     with client.stream("POST", "/api/agent/chat/stream",
                        json={"message": "hi"}) as resp:
         text = "".join(resp.iter_text())
-    assert "event: error" in text and "stream boom" in text
+    assert "event: error" in text and "暂时不可用" in text and "stream boom" not in text
+
+
+def test_chat_rejects_foreign_thread(client, monkeypatch, fake_redis, no_rate_limit):
+    _patch_chat_deps(monkeypatch, fake_redis, FakeAgent())
+    monkeypatch.setattr("app.api.chat.get_session", lambda tid: {"ownerId": "user:2"})
+    resp = client.post("/api/agent/chat",
+                       json={"threadId": THREAD_ID, "message": "hi"},
+                       headers={"authorization": "tok"})
+    assert resp.status_code == 403
+
+
+def test_chat_rejects_unknown_client_thread(client, monkeypatch, fake_redis, no_rate_limit):
+    _patch_chat_deps(monkeypatch, fake_redis, FakeAgent())
+    monkeypatch.setattr("app.api.chat.get_session", lambda tid: None)
+    resp = client.post("/api/agent/chat",
+                       json={"threadId": THREAD_ID, "message": "hi"},
+                       headers={"authorization": "tok"})
+    assert resp.status_code == 404
 
 
 def test_chat_stream_rate_limited(client, monkeypatch, fake_redis):
     monkeypatch.setattr(settings, "chat_rate_limit", 10)
     monkeypatch.setattr("app.api.chat.resolve_user", lambda token: USER)
     monkeypatch.setattr("app.api.chat.get_redis", lambda: fake_redis)
-    fake_redis.counters[f"agent:rate:{USER['userId']}"] = 99
+    fake_redis.counters[f"agent:rate:user:{USER['userId']}"] = 99
     body = client.post("/api/agent/chat/stream", json={"message": "hi"}).json()
     assert not body["success"] and "频繁" in body["errorMsg"]
 
@@ -178,8 +198,12 @@ def test_sessions_guest(client, monkeypatch):
 def test_sessions_delete_ok(client, monkeypatch):
     monkeypatch.setattr("app.api.sessions.resolve_user", lambda token: USER)
     monkeypatch.setattr("app.api.sessions.get_session",
-                        lambda tid: {"userId": "1"})
-    monkeypatch.setattr("app.api.sessions.delete_session", lambda tid: None)
+                        lambda tid: {"ownerId": "user:1"})
+    async def delete_checkpoints(tid):
+        return None
+
+    monkeypatch.setattr("app.api.sessions.delete_thread_checkpoints", delete_checkpoints)
+    monkeypatch.setattr("app.api.sessions.delete_session", lambda *args: None)
     body = client.delete("/api/agent/sessions/t1",
                          headers={"authorization": "tok"}).json()
     assert body["success"]
@@ -196,7 +220,7 @@ def test_sessions_delete_not_found(client, monkeypatch):
 def test_sessions_delete_forbidden(client, monkeypatch):
     monkeypatch.setattr("app.api.sessions.resolve_user", lambda token: USER)
     monkeypatch.setattr("app.api.sessions.get_session",
-                        lambda tid: {"userId": "2"})
+                        lambda tid: {"ownerId": "user:2"})
     resp = client.delete("/api/agent/sessions/t1", headers={"authorization": "tok"})
     assert resp.status_code == 403
 
@@ -247,7 +271,13 @@ def test_health_mysql_down(client, monkeypatch, fake_redis):
     monkeypatch.setattr("app.api.admin.get_redis", lambda: fake_redis)
     monkeypatch.setattr("app.api.admin.es_client.ping", lambda: True)
     body = client.get("/api/agent/health").json()
-    assert "db down" in body["data"]["mysql"]
+    assert body["data"]["mysql"] == "fail"
+
+
+def test_admin_endpoint_requires_admin(client, monkeypatch):
+    monkeypatch.setattr("app.api.admin.resolve_admin", lambda token: None)
+    resp = client.get("/api/agent/health")
+    assert resp.status_code == 401
 
 
 def test_tool_stats(client, monkeypatch, fake_redis):
@@ -267,6 +297,7 @@ def test_invoke_tool_ok(client, monkeypatch, fake_redis):
     monkeypatch.setattr(mysql, "get_movies_by_ids",
                         lambda ids: [{"id": 1, "title": "教父", "rating": 9.1,
                                       "ratingCount": 500, "genre": "剧情", "region": "美国"}])
+    monkeypatch.setattr(settings, "admin_tool_invoke_enabled", True)
     body = client.post("/api/agent/tools/list_hot_movies", json={"current": 1}).json()
     assert body["success"] and "教父" in body["data"]["result"]
 

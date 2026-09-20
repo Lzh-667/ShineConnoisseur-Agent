@@ -26,6 +26,20 @@ class FakeRedis:
         self.counters[key] = self.counters.get(key, 0) + 1
         return self.counters[key]
 
+    def eval(self, script, numkeys, key, now_ms, window_ms, limit, member):
+        # 仅实现聊天滑动窗口脚本所需语义。
+        if self.counters.get(key, 0) >= int(limit):
+            return 0
+        cutoff = int(now_ms) - int(window_ms)
+        zset = self.zsets.setdefault(key, {})
+        for value, score in list(zset.items()):
+            if score <= cutoff:
+                del zset[value]
+        if len(zset) >= int(limit):
+            return 0
+        zset[member] = int(now_ms)
+        return 1
+
     def expire(self, key, seconds):
         self.expires[key] = seconds
 
@@ -52,7 +66,8 @@ class FakeRedis:
 
     def zrevrange(self, key, start, end, withscores=False):
         items = sorted(self.zsets.get(key, {}).items(),
-                       key=lambda kv: kv[1], reverse=True)[start:end + 1]
+                       key=lambda kv: kv[1], reverse=True)
+        items = items[start:] if end == -1 else items[start:end + 1]
         if withscores:
             return [(m, float(s)) for m, s in items]
         return [m for m, _ in items]
@@ -61,6 +76,14 @@ class FakeRedis:
         cur = float(self.zsets.setdefault(key, {}).get(member, 0))
         self.zsets[key][member] = cur + amount
         return cur + amount
+
+    def zadd(self, key, mapping):
+        self.zsets.setdefault(key, {}).update(mapping)
+
+    def zrem(self, key, *members):
+        zset = self.zsets.get(key, {})
+        for member in members:
+            zset.pop(member, None)
 
     def scan(self, cursor=0, match=None, count=None):
         keys = [k for k in self.hashes if match is None or match.replace("*", "") in k]
@@ -82,3 +105,16 @@ def fake_redis():
 def client():
     # 不用 with 上下文，避免触发 lifespan 连接真实 MySQL/Redis/ES
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def default_admin_auth(monkeypatch):
+    """除鉴权用例外，管理接口测试统一模拟有效管理员令牌。"""
+    monkeypatch.setattr("app.api.admin.resolve_admin",
+                        lambda token: {"adminId": 1, "username": "admin", "token": "admin-token"})
+
+
+@pytest.fixture(autouse=True)
+def default_review_insight_cache(monkeypatch, fake_redis):
+    """测试不触碰真实 Redis；缓存行为仍由 FakeRedis 覆盖。"""
+    monkeypatch.setattr("app.tools.summary_tools.get_redis", lambda: fake_redis)

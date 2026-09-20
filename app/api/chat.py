@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+import logging
+import secrets
 import time
 import uuid
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Cookie, Header, HTTPException, Response
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from sse_starlette.sse import EventSourceResponse
 
@@ -15,19 +17,35 @@ from app.api.schemas import ChatData, ChatRequest, ToolCallInfo, fail, ok
 from app.config.settings import settings
 from app.services.auth import resolve_user
 from app.services.redis_client import AgentRedisKeys, get_redis
-from app.services.session_store import touch_session
+from app.services.session_store import get_session, touch_session
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
-def _rate_limited(user_id: int) -> bool:
-    """滑动窗口限流：每分钟 N 次（agent:rate:{userId}）。"""
+_RATE_LIMIT_SCRIPT = """
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+if redis.call('ZCARD', KEYS[1]) >= limit then return 0 end
+redis.call('ZADD', KEYS[1], now, ARGV[4])
+redis.call('PEXPIRE', KEYS[1], window)
+return 1
+"""
+
+
+def _rate_limited(subject: str) -> bool:
+    """Redis Lua 原子滑动窗口限流，避免窗口边界突发和 INCR/EXPIRE 竞态。"""
     r = get_redis()
-    key = AgentRedisKeys.RATE.format(user_id)
-    count = r.incr(key)
-    if count == 1:
-        r.expire(key, AgentRedisKeys.RATE_WINDOW_SECONDS)
-    return count > settings.chat_rate_limit
+    key = AgentRedisKeys.RATE.format(subject)
+    now_ms = int(time.time() * 1000)
+    allowed = r.eval(
+        _RATE_LIMIT_SCRIPT, 1, key, now_ms,
+        AgentRedisKeys.RATE_WINDOW_SECONDS * 1000,
+        settings.chat_rate_limit, secrets.token_hex(8),
+    )
+    return not bool(allowed)
 
 
 def _extract_tools(messages: list) -> list[ToolCallInfo]:
@@ -49,6 +67,40 @@ def _new_thread_id() -> str:
     return uuid.uuid4().hex
 
 
+def _session_owner(user: dict, guest_id: str | None) -> tuple[str, str | None]:
+    if user["userId"]:
+        return f"user:{user['userId']}", None
+    # 未登录用户通过 HttpOnly cookie 获得隔离的会话身份，不能再共享 ownerId=0。
+    if not guest_id:
+        guest_id = secrets.token_urlsafe(24)
+    return f"guest:{guest_id}", guest_id
+
+
+async def _prepare_session(req: ChatRequest, user: dict,
+                           guest_id: str | None) -> tuple[str, str, str | None]:
+    owner_id, new_guest_id = _session_owner(user, guest_id)
+    if req.threadId:
+        meta = await asyncio.to_thread(get_session, req.threadId)
+        if not meta:
+            # 新会话只能由服务端生成 ID，防止复用已删除/未知 checkpoint。
+            raise HTTPException(status_code=404, detail="会话不存在，请新建对话")
+        if meta.get("ownerId") != owner_id:
+            raise HTTPException(status_code=403, detail="无权访问该会话")
+        thread_id = req.threadId
+    else:
+        thread_id = _new_thread_id()
+    await asyncio.to_thread(touch_session, thread_id, owner_id, req.message)
+    return thread_id, owner_id, new_guest_id
+
+
+def _set_guest_cookie(response: Response, guest_id: str | None) -> None:
+    if guest_id:
+        response.set_cookie(
+            key="agent_guest_id", value=guest_id, max_age=7 * 24 * 3600,
+            httponly=True, samesite="lax", secure=settings.agent_cookie_secure,
+        )
+
+
 def _semantic_sources(content: str):
     """从 semantic_search 工具结果中解析引用来源，发 SSE source 事件。"""
     try:
@@ -64,15 +116,19 @@ def _semantic_sources(content: str):
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest, authorization: str | None = Header(default=None)):
-    user = resolve_user(authorization)
-    if _rate_limited(user["userId"]):
+async def chat(req: ChatRequest, response: Response,
+               authorization: str | None = Header(default=None),
+               agent_guest_id: str | None = Cookie(default=None)):
+    user = await asyncio.to_thread(resolve_user, authorization)
+    owner_id, _ = _session_owner(user, agent_guest_id)
+    if await asyncio.to_thread(_rate_limited, owner_id):
         return fail("发言太频繁了，请稍等一分钟再试")
-    thread_id = req.threadId or _new_thread_id()
-    touch_session(thread_id, user["userId"], req.message)
+    thread_id, _, new_guest_id = await _prepare_session(req, user, agent_guest_id)
+    _set_guest_cookie(response, new_guest_id)
 
     agent = get_agent()
-    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"])
+    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"],
+                       page_context=req.extra or {})
     try:
         result = await asyncio.wait_for(
             agent.ainvoke(
@@ -84,8 +140,9 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         )
     except TimeoutError:
         return fail("AI 响应超时，请稍后重试")
-    except Exception as e:
-        return fail(f"AI 服务异常：{e}")
+    except Exception:
+        logger.exception("chat invocation failed, thread_id=%s", thread_id)
+        return fail("AI 服务暂时不可用，请稍后重试")
 
     messages = result.get("messages", [])
     reply = messages[-1].content if messages else ""
@@ -98,15 +155,17 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
 
 
 @router.post("/chat/stream")
-async def chat_stream(req: ChatRequest, authorization: str | None = Header(default=None)):
-    user = resolve_user(authorization)
-    if _rate_limited(user["userId"]):
+async def chat_stream(req: ChatRequest, authorization: str | None = Header(default=None),
+                      agent_guest_id: str | None = Cookie(default=None)):
+    user = await asyncio.to_thread(resolve_user, authorization)
+    owner_id, _ = _session_owner(user, agent_guest_id)
+    if await asyncio.to_thread(_rate_limited, owner_id):
         return fail("发言太频繁了，请稍等一分钟再试")
-    thread_id = req.threadId or _new_thread_id()
-    touch_session(thread_id, user["userId"], req.message)
+    thread_id, _, new_guest_id = await _prepare_session(req, user, agent_guest_id)
 
     agent = get_agent()
-    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"])
+    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"],
+                       page_context=req.extra or {})
     config = {"configurable": {"thread_id": thread_id}}
 
     async def gen():
@@ -142,7 +201,11 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                                        "durationMs": int((time.time() - start) * 1000)})}
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            yield {"event": "error", "data": json.dumps({"message": str(e)}, ensure_ascii=False)}
+        except Exception:
+            logger.exception("streaming chat failed, thread_id=%s", thread_id)
+            yield {"event": "error",
+                   "data": json.dumps({"message": "AI 服务暂时不可用，请稍后重试"}, ensure_ascii=False)}
 
-    return EventSourceResponse(gen(), ping=15)
+    response = EventSourceResponse(gen(), ping=15)
+    _set_guest_cookie(response, new_guest_id)
+    return response

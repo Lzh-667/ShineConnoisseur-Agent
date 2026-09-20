@@ -12,18 +12,45 @@ from app.services import mysql
 from app.services import profile as profile_service
 
 
-def build_profile(user_id: int) -> AgentUserProfile:
+def _merge_preferences(behavior: dict, previous: dict | None) -> dict:
+    """保留用户明确表达过的偏好，同时允许行为聚合更新其权重。"""
+    merged = dict(behavior or {})
+    for value, weight in (previous or {}).items():
+        merged[value] = max(merged.get(value, 0), weight)
+    return merged
+
+
+def build_profile(user_id: int, previous: AgentUserProfile | None = None) -> AgentUserProfile:
     prefs = profile_service.aggregate_user_preferences(user_id)
+    genre_prefs = _merge_preferences(prefs["genrePrefs"],
+                                     previous.genre_prefs if previous else None)
+    actor_prefs = _merge_preferences(prefs["actorPrefs"],
+                                     previous.actor_prefs if previous else None)
+    director_prefs = _merge_preferences(prefs["directorPrefs"],
+                                        previous.director_prefs if previous else None)
+    region_prefs = _merge_preferences(prefs["regionPrefs"],
+                                      previous.region_prefs if previous else None)
+    scene_prefs = dict(previous.scene_prefs or {}) if previous else {}
+    watch_prefs = dict(previous.watch_prefs or {}) if previous else {}
+    summary_prefs = {
+        **prefs,
+        "genrePrefs": genre_prefs,
+        "actorPrefs": actor_prefs,
+        "directorPrefs": director_prefs,
+        "regionPrefs": region_prefs,
+        "scenePrefs": scene_prefs,
+        "watchPrefs": watch_prefs,
+    }
     return AgentUserProfile(
         user_id=user_id,
-        genre_prefs=prefs["genrePrefs"],
-        actor_prefs=prefs["actorPrefs"],
-        director_prefs=prefs["directorPrefs"],
-        region_prefs=prefs["regionPrefs"],
+        genre_prefs=genre_prefs,
+        actor_prefs=actor_prefs,
+        director_prefs=director_prefs,
+        region_prefs=region_prefs,
         rating_tendency=prefs["ratingTendency"],
-        scene_prefs={},
-        watch_prefs={},
-        profile_summary=_summarize(prefs),
+        scene_prefs=scene_prefs,
+        watch_prefs=watch_prefs,
+        profile_summary=_summarize(summary_prefs),
     )
 
 
@@ -33,6 +60,10 @@ def _summarize(prefs: dict) -> str:
         parts.append("偏好类型：" + "/".join(prefs["genrePrefs"].keys()))
     if prefs.get("directorPrefs"):
         parts.append("常看导演：" + "/".join(prefs["directorPrefs"].keys()))
+    if prefs.get("actorPrefs"):
+        parts.append("偏好演员：" + "/".join(prefs["actorPrefs"].keys()))
+    if prefs.get("regionPrefs"):
+        parts.append("偏好地区：" + "/".join(prefs["regionPrefs"].keys()))
     rt = prefs.get("ratingTendency") or {}
     if rt.get("count"):
         parts.append(f"打分习惯：平均 {rt['avg']} 分（{rt['count']} 部）")
@@ -76,7 +107,7 @@ def get_or_refresh(user_id: int) -> dict:
         store.cache_profile(user_id)
         return _to_dict(profile)
 
-    profile = build_profile(user_id)
+    profile = build_profile(user_id, profile)
     store.save_profile(profile)
     return _to_dict(profile)
 

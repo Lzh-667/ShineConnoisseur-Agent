@@ -6,7 +6,10 @@
 - 电影详情/影评列表：MySQL（Cache-Aside 同构，Redis 有缓存先读缓存）
 """
 
+from typing import Annotated
+
 from langchain.tools import tool
+from pydantic import Field
 
 from app.services import es_client, mysql
 from app.services.redis_client import get_redis
@@ -20,7 +23,7 @@ def _hot_ids(key: str, current: int) -> list[int]:
 
 
 @tool
-def list_hot_movies(current: int = 1) -> str:
+def list_hot_movies(current: Annotated[int, Field(ge=1, le=100)] = 1) -> str:
     """查询站内热门电影排行（按评分人数与评分加权排序）。分页参数 current 从 1 开始，每页 10 条。"""
     ids = _hot_ids("movie:hot:", current)
     if not ids:
@@ -35,7 +38,7 @@ def list_hot_movies(current: int = 1) -> str:
 
 
 @tool
-def list_hot_reviews(current: int = 1) -> str:
+def list_hot_reviews(current: Annotated[int, Field(ge=1, le=100)] = 1) -> str:
     """查询站内热门影评排行（按点赞/评论的时间衰减热度分排序）。分页参数 current 从 1 开始，每页 10 条。"""
     ids = _hot_ids("review:hot:", current)
     if not ids:
@@ -51,7 +54,7 @@ def list_hot_reviews(current: int = 1) -> str:
 
 
 @tool
-def get_movie_detail(movie_id: int) -> str:
+def get_movie_detail(movie_id: Annotated[int, Field(gt=0)]) -> str:
     """查询某部电影的详情：简介、导演、演员、类型、地区、上映日期、片长、站内平均评分等。参数 movie_id 为电影 id。"""
     r = get_redis()
     cached = r.get(f"movie:info:{movie_id}")
@@ -66,7 +69,8 @@ def get_movie_detail(movie_id: int) -> str:
 
 
 @tool
-def list_movie_reviews(movie_id: int, current: int = 1) -> str:
+def list_movie_reviews(movie_id: Annotated[int, Field(gt=0)],
+                       current: Annotated[int, Field(ge=1, le=100)] = 1) -> str:
     """查询某部电影下的影评列表（按点赞数降序）。参数 movie_id 为电影 id，current 从 1 开始每页 10 条。"""
     movie = mysql.get_movie_by_id(movie_id)
     if not movie:
@@ -82,8 +86,9 @@ def list_movie_reviews(movie_id: int, current: int = 1) -> str:
 
 
 @tool
-def search_movies(keyword: str, genre: str | None = None, region: str | None = None,
-                  current: int = 1) -> str:
+def search_movies(keyword: Annotated[str, Field(min_length=1, max_length=100)],
+                  genre: str | None = None, region: str | None = None,
+                  current: Annotated[int, Field(ge=1, le=100)] = 1) -> str:
     """按关键词搜索电影，可选按类型(genre，如 科幻/喜剧/剧情)和地区(region，如 美国/中国大陆)筛选。
     参数 keyword 为搜索词；current 从 1 开始每页 10 条。"""
     try:
@@ -106,7 +111,9 @@ def search_movies(keyword: str, genre: str | None = None, region: str | None = N
 
 
 @tool
-def search_reviews(keyword: str, spoiler: int | None = None, current: int = 1) -> str:
+def search_reviews(keyword: Annotated[str, Field(min_length=1, max_length=100)],
+                   spoiler: int | None = None,
+                   current: Annotated[int, Field(ge=1, le=100)] = 1) -> str:
     """按关键词搜索影评（标题/电影名/正文匹配）。参数 keyword 为搜索词；
     spoiler 传 1 表示含剧透、0 表示不含剧透、不传则不过滤；current 从 1 开始每页 10 条。"""
     try:

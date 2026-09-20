@@ -20,6 +20,10 @@ _sync_task: asyncio.Task | None = None
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from app.agent.checkpointer import close_checkpointer
+    from app.config.settings import settings
+
+    settings.validate_runtime_config()
     # 预热连接
     mysql.get_engine()
     get_redis()
@@ -33,6 +37,11 @@ async def lifespan(_: FastAPI):
     yield
     if _sync_task:
         _sync_task.cancel()
+        try:
+            await _sync_task
+        except asyncio.CancelledError:
+            pass
+    await close_checkpointer()
     close_redis()
     es_client.close_es()
 

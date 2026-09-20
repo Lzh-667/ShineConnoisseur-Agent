@@ -57,6 +57,7 @@ def _movie_dict(row: dict) -> dict:
         "summary": row.get("summary"),
         "rating": round(total / count, 1) if count else 0,
         "ratingCount": count,
+        "ratingSum": total,
     }
 
 
@@ -95,9 +96,10 @@ def get_movie_by_id(movie_id: int) -> dict | None:
 def get_movies_by_ids(movie_ids: list[int]) -> list[dict]:
     if not movie_ids:
         return []
+    placeholders = ", ".join(f":id_{i}" for i in range(len(movie_ids)))
     rows = _rows(
-        f"SELECT {MOVIE_COLUMNS} FROM movie WHERE id IN :ids AND status=1",
-        ids=tuple(movie_ids),
+        f"SELECT {MOVIE_COLUMNS} FROM movie WHERE id IN ({placeholders}) AND status=1",
+        **{f"id_{i}": movie_id for i, movie_id in enumerate(movie_ids)},
     )
     by_id = {r["id"]: _movie_dict(r) for r in rows}
     return [by_id[i] for i in movie_ids if i in by_id]
@@ -156,12 +158,13 @@ def get_review_by_id(review_id: int) -> dict | None:
 def get_reviews_by_ids(review_ids: list[int]) -> list[dict]:
     if not review_ids:
         return []
+    placeholders = ", ".join(f":id_{i}" for i in range(len(review_ids)))
     rows = _rows(
         f"SELECT {REVIEW_COLUMNS} FROM review r"
         " JOIN user u ON u.id = r.user_id"
         " JOIN movie m ON m.id = r.movie_id"
-        " WHERE r.id IN :ids AND r.status=1",
-        ids=tuple(review_ids),
+        f" WHERE r.id IN ({placeholders}) AND r.status=1",
+        **{f"id_{i}": review_id for i, review_id in enumerate(review_ids)},
     )
     by_id = {r["id"]: _review_dict(r) for r in rows}
     return [by_id[i] for i in review_ids if i in by_id]
@@ -236,8 +239,9 @@ def get_all_movies_for_sync() -> list[dict]:
     return [{**_movie_dict(r), "status": r["status"]} for r in rows]
 
 
-def get_reviews_updated_after(cursor: str | None, limit: int = 100) -> list[dict]:
-    """update_time > cursor 的影评原始行（含 status!=1，用于同步与删除）；cursor 为 None 时取全量。"""
+def get_reviews_updated_after(cursor: tuple[str, int] | None,
+                              limit: int = 100) -> list[dict]:
+    """按 (update_time, id) 复合游标读取影评，避免同一时间戳的记录被跳过。"""
     sql = (
         f"SELECT {REVIEW_COLUMNS}, r.status, r.update_time FROM review r"
         " JOIN user u ON u.id = r.user_id"
@@ -245,7 +249,7 @@ def get_reviews_updated_after(cursor: str | None, limit: int = 100) -> list[dict
     )
     params: dict = {"limit": limit}
     if cursor:
-        sql += " WHERE r.update_time > :cursor"
-        params["cursor"] = cursor
-    sql += " ORDER BY r.update_time LIMIT :limit"
+        sql += " WHERE (r.update_time > :cursor_time OR (r.update_time = :cursor_time AND r.id > :cursor_id))"
+        params["cursor_time"], params["cursor_id"] = cursor
+    sql += " ORDER BY r.update_time, r.id LIMIT :limit"
     return _rows(sql, **params)

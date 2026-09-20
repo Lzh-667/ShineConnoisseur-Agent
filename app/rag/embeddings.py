@@ -33,7 +33,10 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
             )
             resp.raise_for_status()
             data = sorted(resp.json()["data"], key=lambda d: d["index"])
-            return [d["embedding"] for d in data]
+            vectors = [d["embedding"] for d in data]
+            if len(vectors) != len(texts) or any(len(v) != settings.embedding_dim for v in vectors):
+                raise ValueError(f"embedding 返回维度与配置的 {settings.embedding_dim} 不一致")
+            return vectors
         except Exception as e:
             last_err = e
             if attempt < MAX_ATTEMPTS - 1:

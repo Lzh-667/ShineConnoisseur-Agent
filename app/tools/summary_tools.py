@@ -1,12 +1,17 @@
 """能力3：影评总结与正负面观点分析（内部用 deepseek-v4-flash 直调）。"""
 
+import hashlib
 import json
+import logging
 
 from langchain.tools import tool
 
 from app.agent.llm import call_llm, get_reasoner_llm
 from app.agent.system_prompt import load_prompt
 from app.services import mysql
+from app.services.redis_client import AgentRedisKeys, get_redis
+
+logger = logging.getLogger(__name__)
 
 
 def _format_reviews(reviews: list[dict]) -> str:
@@ -24,6 +29,33 @@ def _fetch(movie_id: int) -> tuple[str, list[dict]]:
         return "", []
     reviews = mysql.list_reviews_by_movie_all(movie_id, limit=50)
     return movie["title"], reviews
+
+
+def _cache_key(kind: str, movie_id: int, reviews: list[dict], focus: str = "") -> str:
+    """用实际参与分析的影评生成版本键，影评增删改后无需主动清缓存。"""
+    fingerprint = [
+        (r["id"], r.get("rating"), r.get("content"), r.get("createTime"), r.get("likeCount"))
+        for r in reviews
+    ]
+    digest = hashlib.sha256(
+        json.dumps([kind, movie_id, focus, fingerprint], ensure_ascii=False, default=str).encode()
+    ).hexdigest()[:20]
+    return AgentRedisKeys.REVIEW_INSIGHT.format(digest)
+
+
+def _cache_get(key: str) -> str | None:
+    try:
+        return get_redis().get(key)
+    except Exception:
+        logger.warning("review insight cache read failed", exc_info=True)
+        return None
+
+
+def _cache_set(key: str, value: str) -> None:
+    try:
+        get_redis().set(key, value, ex=AgentRedisKeys.REVIEW_INSIGHT_TTL)
+    except Exception:
+        logger.warning("review insight cache write failed", exc_info=True)
 
 
 @tool
@@ -45,8 +77,14 @@ def summarize_reviews(movie_id: int, focus: str | None = None) -> str:
     if len(reviews) < 3:
         prompt += "\n注意：影评数量较少，总结中要注明「站内影评较少，结论仅供参考」。"
 
+    key = _cache_key("summary", movie_id, reviews, focus or "")
+    cached = _cache_get(key)
+    if cached:
+        return cached
     text = call_llm(get_reasoner_llm(), prompt)
-    return (f"《{movie_title}》影评总结（共 {len(reviews)} 条影评）：\n" + text)
+    result = f"《{movie_title}》影评总结（共 {len(reviews)} 条影评）：\n" + text
+    _cache_set(key, result)
+    return result
 
 
 @tool
@@ -67,11 +105,18 @@ def analyze_review_sentiment(movie_id: int) -> str:
         movie_title=movie_title,
         reviews=_format_reviews(reviews),
     )
+    key = _cache_key("sentiment", movie_id, reviews)
+    cached = _cache_get(key)
+    if cached:
+        return cached
     text = call_llm(get_reasoner_llm(), prompt)
     parsed = _parse_json(text)
     if parsed is not None:
-        return json.dumps(parsed, ensure_ascii=False)
-    return text
+        result = json.dumps(parsed, ensure_ascii=False)
+    else:
+        result = text
+    _cache_set(key, result)
+    return result
 
 
 def _parse_json(text: str) -> dict | None:

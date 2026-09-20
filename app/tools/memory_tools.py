@@ -1,6 +1,9 @@
 """能力7：长期记忆工具（用户画像读取 + 对话偏好提取）。"""
 
+from typing import Annotated, Literal
+
 from langchain.tools import ToolRuntime, tool
+from pydantic import Field
 
 from app.memory import extractor
 from app.tools.common import to_json
@@ -18,8 +21,10 @@ def get_user_profile(runtime: ToolRuntime) -> str:
 
 
 @tool
-def save_preference(runtime: ToolRuntime, pref_type: str, values: list[str],
-                    confidence: str = "high") -> str:
+def save_preference(runtime: ToolRuntime,
+                    pref_type: Literal["scene", "watch", "genre", "actor", "director", "region"],
+                    values: Annotated[list[str], Field(min_length=1, max_length=3)],
+                    confidence: Literal["high", "medium"] = "high") -> str:
     """把用户在对话中明确表达的偏好存入长期记忆。仅当用户明确说「我喜欢/我讨厌/我一般看」
     等表述时调用；不要从单次观影行为推断偏好。参数：pref_type 为偏好类型，
     可选 scene(观影场景)/watch(年代语言等观影习惯)/genre(类型)/actor(演员)/

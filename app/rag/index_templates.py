@@ -4,9 +4,11 @@
 content_embedding 为 BGE-M3 1024 维向量（cosine + HNSW）。
 """
 
+from app.config.settings import settings
+
 _DENSE_VECTOR = {
     "type": "dense_vector",
-    "dims": 1024,
+    "dims": settings.embedding_dim,
     "index": True,
     "similarity": "cosine",
     "index_options": {"type": "hnsw", "m": 16, "ef_construction": 100},

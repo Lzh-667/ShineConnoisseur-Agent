@@ -2,13 +2,14 @@
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
-    threadId: str | None = None  # null = 新建会话
-    message: str
-    extra: dict[str, Any] | None = None  # 可选页面上下文（如 {"movieId": 12}）
+    # 新会话必须由服务端生成 threadId，避免客户端复用未知历史。
+    threadId: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    message: str = Field(min_length=1, max_length=4_000)
+    extra: dict[str, Any] | None = Field(default=None, max_length=20)
 
 
 class ToolCallInfo(BaseModel):

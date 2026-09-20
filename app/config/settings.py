@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,20 +29,20 @@ class Settings(BaseSettings):
     embedding_dim: int = 1024
 
     # MySQL
-    mysql_host: str = "192.168.100.129"
+    mysql_host: str = ""
     mysql_port: int = 3306
-    mysql_user: str = "root"
-    mysql_password: str = "123456"
-    mysql_database: str = "shineconnoisseur"
+    mysql_user: str = ""
+    mysql_password: str = ""
+    mysql_database: str = ""
 
     # Redis
-    redis_host: str = "192.168.100.129"
+    redis_host: str = ""
     redis_port: int = 6379
-    redis_password: str = "123456"
+    redis_password: str = ""
     redis_db: int = 0
 
     # Elasticsearch
-    es_url: str = "http://192.168.100.129:9200"
+    es_url: str = ""
 
     # 后端 REST API
     backend_url: str = "http://localhost:8080"
@@ -51,11 +52,29 @@ class Settings(BaseSettings):
     agent_port: int = 8001
     agent_checkpoint: str = "sqlite"  # sqlite | memory
     chat_rate_limit: int = 10  # 每分钟聊天次数
+    agent_cookie_secure: bool = False  # HTTPS 部署时设为 true
+    admin_tool_invoke_enabled: bool = False
+
+    def validate_runtime_config(self) -> None:
+        """在服务启动时拒绝缺失的生产依赖，避免悄悄连到错误环境。"""
+        required = {
+            "MYSQL_HOST": self.mysql_host,
+            "MYSQL_USER": self.mysql_user,
+            "MYSQL_PASSWORD": self.mysql_password,
+            "MYSQL_DATABASE": self.mysql_database,
+            "REDIS_HOST": self.redis_host,
+            "ES_URL": self.es_url,
+            "DEEPSEEK_API_KEY": self.deepseek_api_key,
+            "SILICONFLOW_API_KEY": self.siliconflow_api_key,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise RuntimeError(f"缺少必要运行配置：{', '.join(missing)}")
 
     @property
     def mysql_url(self) -> str:
         return (
-            f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}"
+            f"mysql+pymysql://{quote_plus(self.mysql_user)}:{quote_plus(self.mysql_password)}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
         )
 
