@@ -1,6 +1,6 @@
 """混合检索 RRF 融合与检索函数测试（mock ES 客户端）。"""
 
-from app.rag.es_hybrid import _rrf_merge, bm25_search, knn_search
+from app.rag.es_hybrid import _query_year, _rrf_merge, bm25_search, knn_search
 
 
 class FakeES:
@@ -32,6 +32,17 @@ def test_bm25_search_maps_hits(monkeypatch):
     monkeypatch.setattr("app.rag.es_hybrid.get_es", lambda: es)
     hits = bm25_search("越狱", "movie_vec", 5)
     assert hits[0] == {"id": 1, "title": "肖申克的救赎", "movieTitle": "", "score": 0.0}
+
+
+def test_movie_search_extracts_year_as_structured_filter(monkeypatch):
+    es = FakeES()
+    monkeypatch.setattr("app.rag.es_hybrid.get_es", lambda: es)
+    bm25_search("1994年的经典电影", "movie_vec", 5)
+
+    filters = es.calls[0]["query"]["bool"]["filter"]
+    assert {"term": {"releaseYear": 1994}} in filters
+    assert _query_year("推荐2024年科幻片") == 2024
+    assert _query_year("推荐经典科幻片") is None
 
 
 def test_knn_search_uses_embedding(monkeypatch):

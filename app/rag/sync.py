@@ -11,6 +11,7 @@ import logging
 import time
 from contextlib import contextmanager
 
+from app.observability.metrics import SYNC_DURATION, SYNC_RUNS
 from app.rag import es_hybrid
 from app.rag.es_hybrid import REVIEW_VEC_INDEX
 from app.services import mysql
@@ -112,13 +113,23 @@ def sync_reviews_full() -> dict:
 
 
 async def _safe(fn, name: str) -> bool:
+    started = time.perf_counter()
+    status = "error"
     try:
         result = await asyncio.to_thread(fn)
         logger.info("sync %s done: %s", name, result)
-        return "skipped" not in result
+        if isinstance(result, dict):
+            success = "skipped" not in result
+            status = "success" if success else "skipped"
+            return success
+        status = "success"
+        return True
     except Exception:
         logger.exception("sync %s failed", name)
         return False
+    finally:
+        SYNC_RUNS.labels(name, status).inc()
+        SYNC_DURATION.labels(name).observe(time.perf_counter() - started)
 
 
 async def run_sync_loop() -> None:

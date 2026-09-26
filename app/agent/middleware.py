@@ -6,12 +6,14 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import SystemMessage
 
 from app.memory import extractor
+from app.observability.metrics import LLM_TOKENS, TOOL_CALLS, TOOL_DURATION
 from app.services.redis_client import AgentRedisKeys, get_redis
 
 logger = logging.getLogger(__name__)
@@ -32,11 +34,29 @@ class ToolUsageMiddleware(AgentMiddleware):
 
     def wrap_tool_call(self, request: ToolCallRequest, handler):
         self._count(request)
-        return handler(request)
+        name = request.tool_call.get("name", "unknown")
+        started = time.perf_counter()
+        status = "error"
+        try:
+            result = handler(request)
+            status = "success"
+            return result
+        finally:
+            TOOL_CALLS.labels(name, status).inc()
+            TOOL_DURATION.labels(name).observe(time.perf_counter() - started)
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler):
         await asyncio.to_thread(self._count, request)
-        return await handler(request)
+        name = request.tool_call.get("name", "unknown")
+        started = time.perf_counter()
+        status = "error"
+        try:
+            result = await handler(request)
+            status = "success"
+            return result
+        finally:
+            TOOL_CALLS.labels(name, status).inc()
+            TOOL_DURATION.labels(name).observe(time.perf_counter() - started)
 
 
 class ProfileInjectionMiddleware(AgentMiddleware):
@@ -100,6 +120,8 @@ class UsageTrackingMiddleware(AgentMiddleware):
             output_tokens = int(usage.get("output_tokens") or 0)
             if input_tokens == 0 and output_tokens == 0:
                 return
+            LLM_TOKENS.labels("input").inc(input_tokens)
+            LLM_TOKENS.labels("output").inc(output_tokens)
             ctx = runtime.context
             r = get_redis()
             if ctx is not None and getattr(ctx, "thread_id", ""):

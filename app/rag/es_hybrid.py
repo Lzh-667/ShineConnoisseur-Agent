@@ -5,8 +5,12 @@
 - hybrid_search()：BM25（与后端同加权）+ knn（cosine）+ RRF 融合，ES 异常降级 MySQL LIKE
 """
 
+import re
+import time
+
 from elasticsearch.helpers import bulk, scan
 
+from app.observability.metrics import RAG_SEARCH_DURATION, RAG_SEARCHES
 from app.rag.embeddings import embed_texts
 from app.rag.index_templates import MOVIE_VEC_INDEX_BODY, REVIEW_VEC_INDEX_BODY
 from app.services import mysql
@@ -35,14 +39,31 @@ def ensure_indices() -> None:
     for name, body in INDEX_BODIES.items():
         if not es.indices.exists(index=name):
             es.indices.create(index=name, body=body)
+    # 已存在的开发索引也要获得新增字段；同类型 put_mapping 是幂等操作。
+    es.indices.put_mapping(
+        index=MOVIE_VEC_INDEX,
+        properties={"releaseYear": {"type": "integer"}},
+    )
 
 
 def _text_of_movie(m: dict) -> str:
-    parts = [m.get("title") or "", m.get("original_title") or "",
+    parts = [m.get("title") or "", m.get("originalTitle") or m.get("original_title") or "",
              m.get("director") or "", m.get("actors") or "",
              m.get("genre") or "", m.get("region") or "",
+             m.get("releaseDate") or m.get("release_date") or "",
              m.get("summary") or ""]
     return " ".join(p for p in parts if p)
+
+
+def _release_year(movie: dict) -> int | None:
+    value = movie.get("releaseDate") or movie.get("release_date")
+    match = re.match(r"^(19|20)\d{2}", str(value or ""))
+    return int(match.group()) if match else None
+
+
+def _query_year(query_text: str) -> int | None:
+    match = re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)", query_text)
+    return int(match.group(1)) if match else None
 
 
 def _text_of_review(r: dict) -> str:
@@ -64,11 +85,12 @@ def index_movies(movies: list[dict]) -> int:
             "_source": {
                 "id": m["id"],
                 "title": m["title"],
-                "originalTitle": m.get("original_title") or "",
+                "originalTitle": m.get("originalTitle") or m.get("original_title") or "",
                 "director": m.get("director") or "",
                 "actors": m.get("actors") or "",
                 "genre": m.get("genre") or "",
                 "region": m.get("region") or "",
+                "releaseYear": _release_year(m),
                 "summary": m.get("summary") or "",
                 "status": m.get("status", 1),
                 "content_embedding": vec,
@@ -128,13 +150,15 @@ def list_index_ids(index: str) -> set[int]:
 
 
 def _build_filter(index: str, genre: str | None, region: str | None,
-                  spoiler: int | None) -> list[dict]:
+                  spoiler: int | None, release_year: int | None = None) -> list[dict]:
     filters = [{"term": {"status": 1}}]
     if index == MOVIE_VEC_INDEX:
         if genre:
             filters.append({"wildcard": {"genre": f"*{genre}*"}})
         if region:
             filters.append({"wildcard": {"region": f"*{region}*"}})
+        if release_year is not None:
+            filters.append({"term": {"releaseYear": release_year}})
     else:
         if spoiler is not None:
             filters.append({"term": {"spoiler": spoiler}})
@@ -173,45 +197,66 @@ def bm25_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
                 genre: str | None = None, region: str | None = None,
                 spoiler: int | None = None) -> list[dict]:
     """BM25 关键词路（加权与后端一致），返回 [{id, title, movieTitle, score}]。"""
-    es = get_es()
-    fields = MOVIE_BM25_FIELDS if index == MOVIE_VEC_INDEX else REVIEW_BM25_FIELDS
-    filters = _build_filter(index, genre, region, spoiler)
-    query = {"bool": {
-        "must": [{"multi_match": {"query": query_text, "fields": fields}}],
-        "filter": filters,
-    }}
-    resp = es.search(index=index, query=query, size=top_k,
-                     source=["id", "title", "movieTitle"])
-    return _to_hits(resp)
+    started = time.perf_counter()
+    status = "error"
+    try:
+        es = get_es()
+        fields = MOVIE_BM25_FIELDS if index == MOVIE_VEC_INDEX else REVIEW_BM25_FIELDS
+        filters = _build_filter(index, genre, region, spoiler, _query_year(query_text))
+        query = {"bool": {
+            "must": [{"multi_match": {"query": query_text, "fields": fields}}],
+            "filter": filters,
+        }}
+        resp = es.search(index=index, query=query, size=top_k,
+                         source=["id", "title", "movieTitle"])
+        status = "success"
+        return _to_hits(resp)
+    finally:
+        RAG_SEARCHES.labels("bm25", status).inc()
+        RAG_SEARCH_DURATION.labels("bm25").observe(time.perf_counter() - started)
 
 
 def knn_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
                genre: str | None = None, region: str | None = None,
                spoiler: int | None = None) -> list[dict]:
     """向量语义路（cosine），返回 [{id, title, movieTitle, score}]。"""
-    es = get_es()
-    filters = _build_filter(index, genre, region, spoiler)
-    qvec = embed_texts([query_text])[0]
-    knn = [{
-        "field": "content_embedding",
-        "query_vector": qvec,
-        "k": top_k,
-        "num_candidates": NUM_CANDIDATES,
-        "filter": {"bool": {"filter": filters}},
-    }]
-    resp = es.search(index=index, knn=knn, size=top_k,
-                     source=["id", "title", "movieTitle"])
-    return _to_hits(resp)
+    started = time.perf_counter()
+    status = "error"
+    try:
+        es = get_es()
+        filters = _build_filter(index, genre, region, spoiler, _query_year(query_text))
+        qvec = embed_texts([query_text])[0]
+        knn = [{
+            "field": "content_embedding",
+            "query_vector": qvec,
+            "k": top_k,
+            "num_candidates": NUM_CANDIDATES,
+            "filter": {"bool": {"filter": filters}},
+        }]
+        resp = es.search(index=index, knn=knn, size=top_k,
+                         source=["id", "title", "movieTitle"])
+        status = "success"
+        return _to_hits(resp)
+    finally:
+        RAG_SEARCHES.labels("knn", status).inc()
+        RAG_SEARCH_DURATION.labels("knn").observe(time.perf_counter() - started)
 
 
 def hybrid_search(query_text: str, index: str = MOVIE_VEC_INDEX, top_k: int = 10,
                   genre: str | None = None, region: str | None = None,
                   spoiler: int | None = None) -> list[dict]:
     """BM25 + knn + 客户端 RRF 混合检索，返回 [{id, title, movieTitle, score}]（融合分降序）。"""
-    candidate_size = min(top_k * 2, 100)
-    bm25_hits = bm25_search(query_text, index, candidate_size, genre, region, spoiler)
-    knn_hits = knn_search(query_text, index, candidate_size, genre, region, spoiler)
-    return _rrf_merge([bm25_hits, knn_hits], top_k)
+    started = time.perf_counter()
+    status = "error"
+    try:
+        candidate_size = min(top_k * 2, 100)
+        bm25_hits = bm25_search(query_text, index, candidate_size, genre, region, spoiler)
+        knn_hits = knn_search(query_text, index, candidate_size, genre, region, spoiler)
+        status = "success"
+        return _rrf_merge([bm25_hits, knn_hits], top_k)
+    finally:
+        RAG_SEARCHES.labels("hybrid", status).inc()
+        RAG_SEARCH_DURATION.labels("hybrid").observe(time.perf_counter() - started)
 
 
 def hybrid_search_with_fallback(query_text: str, index: str = MOVIE_VEC_INDEX,

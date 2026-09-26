@@ -16,5 +16,6 @@ pydantic-settings>=2.3
 python-dotenv>=1.0
 numpy>=1.26
 sse-starlette>=2.1
+prometheus-client>=0.20,<1.0
 pytest>=8.0
 ruff>=0.16

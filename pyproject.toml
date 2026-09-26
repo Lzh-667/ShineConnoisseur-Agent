@@ -13,3 +13,6 @@ ignore = ["DTZ005", "B008", "BLE001"]
 testpaths = ["tests"]
 # 项目根加入 sys.path，保证 `pytest -q`（CI 方式）也能 import app
 pythonpath = ["."]
+markers = [
+    "integration: requires live MySQL, Redis, and Elasticsearch services",
+]

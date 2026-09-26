@@ -27,6 +27,7 @@ MOVIE_VEC_INDEX_BODY = {
             "actors": _TEXT_IK,
             "genre": {"type": "keyword"},
             "region": {"type": "keyword"},
+            "releaseYear": {"type": "integer"},
             "summary": _TEXT_IK,
             "status": {"type": "integer"},
             "content_embedding": _DENSE_VECTOR,

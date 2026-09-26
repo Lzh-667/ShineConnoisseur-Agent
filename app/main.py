@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,6 +12,7 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from app.api import admin, chat, profile, sessions
+from app.observability.metrics import HTTP_DURATION, HTTP_REQUESTS, metrics_app
 from app.rag import sync as rag_sync
 from app.services import es_client, mysql
 from app.services.redis_client import close_redis, get_redis
@@ -48,6 +50,21 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="ShineConnoisseur Agent", version="0.3.0", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def observe_http(request, call_next):
+    """记录低基数 HTTP 指标；动态参数使用路由模板而不是原始 URL。"""
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        route = getattr(request.scope.get("route"), "path", "unmatched")
+        HTTP_REQUESTS.labels(request.method, route, str(status)).inc()
+        HTTP_DURATION.labels(request.method, route).observe(time.perf_counter() - started)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -64,3 +81,4 @@ app.include_router(admin.router, prefix="/api/agent", tags=["admin"])
 app.include_router(chat.router, prefix="/api/agent", tags=["chat"])
 app.include_router(sessions.router, prefix="/api/agent", tags=["sessions"])
 app.include_router(profile.router, prefix="/api/agent", tags=["profile"])
+app.mount("/metrics", metrics_app())

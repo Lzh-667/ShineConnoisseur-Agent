@@ -13,6 +13,10 @@
 | 3 | 推荐（条件/收藏/场景）+ 电影对比 + 观影计划 | ✅ 已完成 |
 | 4 | 影评总结 + 正负面观点分析 + AI 辅助创作/发布 | ✅ 已完成 |
 | 5 | 长期记忆（用户画像）+ 热门 tool 统计 + 限流 + 单元测试 | ✅ 已完成 |
+| 6 | Prometheus 可观测性 + 真实中间件集成测试 + RAG 评测 | ✅ 已完成 |
+
+年份类电影查询会提取四位年份并对向量索引中的 `releaseYear` 做结构化过滤；同步过程同时保留
+`originalTitle` 与上映年份，避免把精确条件完全交给语义相似度猜测。
 
 ## 快速开始
 
@@ -45,6 +49,7 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 | GET | `/api/agent/usage/session/{threadId}` | 单会话 token 用量与估算成本 |
 | GET | `/api/agent/usage/daily?days=7` | 最近 N 天全站 token 用量与估算成本 |
 | GET | `/api/agent/profile/{userId}` | 用户画像（长期记忆，需登录且仅限本人） |
+| GET | `/metrics/` | Prometheus 指标（请求/对话/工具/RAG/Token/同步） |
 
 会话安全约定：新会话必须省略 `threadId`，由服务端生成；后续请求只能使用属于当前登录用户（或当前游客 cookie）的既有会话。删除会话会同时删除 LangGraph checkpoint 历史。
 
@@ -54,23 +59,49 @@ cp .env.example .env                            # 填入 DEEPSEEK_API_KEY / SILI
 
 ```bash
 .venv/Scripts/ruff check app tests scripts run.py   # lint
-.venv/Scripts/python -m pytest -q                   # 76 个单测，全部 mock 外部依赖
+.venv/Scripts/python -m pytest -q                   # 单元测试（真实依赖测试默认跳过）
+$env:RUN_INTEGRATION="1"; .venv/Scripts/python -m pytest -q -m integration tests/integration
 ```
 
-GitHub Actions（`.github/workflows/ci.yml`）：push/PR 时自动跑 lint + pytest，不依赖任何中间件。
+GitHub Actions（`.github/workflows/ci.yml`）：push/PR 时运行 lint、单元测试，并启动隔离的
+MySQL/Redis/Elasticsearch 容器执行真实依赖集成测试。
 
 测试分层：工具层（mock MySQL/Redis/ES/LLM，覆盖降级分支）、API 层（TestClient + FakeAgent，覆盖限流/SSE/鉴权）、
 RRF 纯逻辑、token 用量统计。
+
+最近一次本地验收：**88 个单元测试通过**，以及 Docker MySQL/Redis/Elasticsearch 上的
+**3 个真实依赖集成测试通过**。
 
 ## RAG 评估
 
 ```bash
 .venv/Scripts/python scripts/eval_rag.py             # 混合 vs BM25 vs 向量：延迟 + LLM 判官命中率
 .venv/Scripts/python scripts/eval_rag.py --skip-judge
+.venv/Scripts/python scripts/eval_rag.py --out reports/rag.json --markdown-out reports/rag.md
+.venv/Scripts/python scripts/eval_rag.py --prewarm-embeddings --skip-judge \
+  --out reports/rag-warm.json --markdown-out reports/rag-warm.md
+.venv/Scripts/python scripts/eval_rag.py --methods bm25 --skip-judge \
+  --out reports/rag-bm25.json --markdown-out reports/rag-bm25.md
 ```
+
+评测会先检查 ES、Embedding API，以及启用判官时的 LLM API；无效密钥会立即失败且不会写入误导性报告。
+`--methods` 可用于单独评测 `bm25`、`knn` 或 `hybrid`（逗号分隔）。
+`--prewarm-embeddings` 会批量填充 Redis 查询向量缓存，用于测量稳定态检索延迟；报告会明确标注是否预热。
+判官会在一次调用中同时比较同一查询的所有检索方法，减少随机偏差并将 30 条数据集的判官调用量从 90 次降到 30 次。
 
 需 ES 向量索引已同步。数据集 `scripts/eval_dataset.json`（30 条自然语言查询），
 LLM 判官逐条判断「检索结果能否回答查询」，输出各方法平均/P50/P95 延迟与命中率（`--out` 可导出 JSON）。
+
+最近一次 Docker 稳定态评测（2026-09-26，Top 5，30 条查询，Embedding 缓存已预热）：
+
+| 方法 | 判官命中率 | 平均延迟 | P95 |
+|---|---:|---:|---:|
+| BM25 | 43.3% | 22.9 ms | 30.4 ms |
+| KNN | 66.7% | 23.1 ms | 26.2 ms |
+| Hybrid RRF | **66.7%** | 47.3 ms | 57.8 ms |
+
+Hybrid 相比 BM25 提升 **23.4 个百分点**；详细结果见
+[`reports/rag-full.md`](reports/rag-full.md) 与 [`reports/rag-full.json`](reports/rag-full.json)。
 
 ## ES 语义检索说明
 
@@ -80,6 +111,9 @@ LLM 判官逐条判断「检索结果能否回答查询」，输出各方法平�
 - embedding 结果按文本 md5 缓存 Redis 30 天，重同步不重复计费
 
 ## 架构
+
+完整组件图、对话时序图、可靠性设计和 PromQL 示例见
+[架构文档](docs/architecture.md)。
 
 ```
 app/
@@ -92,5 +126,5 @@ app/
 └── prompts/      # 提示词模板（与代码分离）
 ```
 
-数据访问约定：读操作直连 MySQL/ES/Redis（192.168.100.129），写操作调后端 REST API（token 透传）。
+数据访问约定：读操作通过环境变量配置的 MySQL/ES/Redis 连接，写操作调用后端 REST API（token 透传）。
 Redis Key 统一 `agent:` 前缀，常量收敛于 `services/redis_client.py::AgentRedisKeys`。

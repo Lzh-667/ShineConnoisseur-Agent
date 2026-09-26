@@ -17,6 +17,14 @@ BATCH_SIZE = 32
 MAX_ATTEMPTS = 4
 
 
+def _is_retryable(error: Exception) -> bool:
+    """只重试瞬时错误；401/403 等确定性客户端错误应立即失败。"""
+    if not isinstance(error, httpx.HTTPStatusError):
+        return True
+    status = error.response.status_code
+    return status == 429 or status >= 500
+
+
 def _embed_batch(texts: list[str]) -> list[list[float]]:
     last_err: Exception | None = None
     for attempt in range(MAX_ATTEMPTS):
@@ -39,9 +47,16 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
             return vectors
         except Exception as e:
             last_err = e
+            if not _is_retryable(e):
+                break
             if attempt < MAX_ATTEMPTS - 1:
                 time.sleep(2 ** attempt)
     raise RuntimeError(f"embedding 调用失败: {last_err}")
+
+
+def check_embedding_service() -> int:
+    """执行一次不走缓存的最小探测，返回实际向量维度。"""
+    return len(_embed_batch(["embedding health check"])[0])
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

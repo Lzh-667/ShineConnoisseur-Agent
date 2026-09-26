@@ -15,6 +15,7 @@ from app.agent.builder import get_agent
 from app.agent.context import AgentContext
 from app.api.schemas import ChatData, ChatRequest, ToolCallInfo, fail, ok
 from app.config.settings import settings
+from app.observability.metrics import CHAT_DURATION, CHAT_FIRST_TOKEN, CHAT_REQUESTS
 from app.services.auth import resolve_user
 from app.services.redis_client import AgentRedisKeys, get_redis
 from app.services.session_store import get_session, touch_session
@@ -119,17 +120,20 @@ def _semantic_sources(content: str):
 async def chat(req: ChatRequest, response: Response,
                authorization: str | None = Header(default=None),
                agent_guest_id: str | None = Cookie(default=None)):
-    user = await asyncio.to_thread(resolve_user, authorization)
-    owner_id, _ = _session_owner(user, agent_guest_id)
-    if await asyncio.to_thread(_rate_limited, owner_id):
-        return fail("发言太频繁了，请稍等一分钟再试")
-    thread_id, _, new_guest_id = await _prepare_session(req, user, agent_guest_id)
-    _set_guest_cookie(response, new_guest_id)
-
-    agent = get_agent()
-    ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"],
-                       page_context=req.extra or {})
+    started = time.perf_counter()
+    status = "error"
     try:
+        user = await asyncio.to_thread(resolve_user, authorization)
+        owner_id, _ = _session_owner(user, agent_guest_id)
+        if await asyncio.to_thread(_rate_limited, owner_id):
+            status = "rate_limited"
+            return fail("发言太频繁了，请稍等一分钟再试")
+        thread_id, _, new_guest_id = await _prepare_session(req, user, agent_guest_id)
+        _set_guest_cookie(response, new_guest_id)
+
+        agent = get_agent()
+        ctx = AgentContext(user_id=user["userId"], thread_id=thread_id, token=user["token"],
+                           page_context=req.extra or {})
         result = await asyncio.wait_for(
             agent.ainvoke(
                 {"messages": [{"role": "user", "content": req.message}]},
@@ -138,11 +142,19 @@ async def chat(req: ChatRequest, response: Response,
             ),
             timeout=300,
         )
+        status = "success"
     except TimeoutError:
+        status = "timeout"
         return fail("AI 响应超时，请稍后重试")
+    except HTTPException:
+        status = "denied"
+        raise
     except Exception:
-        logger.exception("chat invocation failed, thread_id=%s", thread_id)
+        logger.exception("chat invocation failed")
         return fail("AI 服务暂时不可用，请稍后重试")
+    finally:
+        CHAT_REQUESTS.labels("sync", status).inc()
+        CHAT_DURATION.labels("sync", status).observe(time.perf_counter() - started)
 
     messages = result.get("messages", [])
     reply = messages[-1].content if messages else ""
@@ -157,9 +169,13 @@ async def chat(req: ChatRequest, response: Response,
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest, authorization: str | None = Header(default=None),
                       agent_guest_id: str | None = Cookie(default=None)):
+    request_started = time.perf_counter()
     user = await asyncio.to_thread(resolve_user, authorization)
     owner_id, _ = _session_owner(user, agent_guest_id)
     if await asyncio.to_thread(_rate_limited, owner_id):
+        CHAT_REQUESTS.labels("stream", "rate_limited").inc()
+        CHAT_DURATION.labels("stream", "rate_limited").observe(
+            time.perf_counter() - request_started)
         return fail("发言太频繁了，请稍等一分钟再试")
     thread_id, _, new_guest_id = await _prepare_session(req, user, agent_guest_id)
 
@@ -169,7 +185,9 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
     config = {"configurable": {"thread_id": thread_id}}
 
     async def gen():
-        start = time.time()
+        start = time.perf_counter()
+        status = "error"
+        first_token_seen = False
         try:
             async for mode, chunk in agent.astream(
                 {"messages": [{"role": "user", "content": req.message}]},
@@ -180,6 +198,9 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                 if mode == "messages":
                     msg, _meta = chunk
                     if isinstance(msg, AIMessageChunk) and msg.content:
+                        if not first_token_seen:
+                            CHAT_FIRST_TOKEN.observe(time.perf_counter() - start)
+                            first_token_seen = True
                         yield {"event": "message",
                                "data": json.dumps({"delta": msg.content}, ensure_ascii=False)}
                 elif mode == "updates":
@@ -196,15 +217,20 @@ async def chat_stream(req: ChatRequest, authorization: str | None = Header(defau
                                 if m.name == "semantic_search":
                                     for s in _semantic_sources(content):
                                         yield s
+            status = "success"
             yield {"event": "done",
                    "data": json.dumps({"threadId": thread_id,
-                                       "durationMs": int((time.time() - start) * 1000)})}
+                                       "durationMs": int((time.perf_counter() - start) * 1000)})}
         except asyncio.CancelledError:
+            status = "cancelled"
             raise
         except Exception:
             logger.exception("streaming chat failed, thread_id=%s", thread_id)
             yield {"event": "error",
                    "data": json.dumps({"message": "AI 服务暂时不可用，请稍后重试"}, ensure_ascii=False)}
+        finally:
+            CHAT_REQUESTS.labels("stream", status).inc()
+            CHAT_DURATION.labels("stream", status).observe(time.perf_counter() - start)
 
     response = EventSourceResponse(gen(), ping=15)
     _set_guest_cookie(response, new_guest_id)
