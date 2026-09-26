@@ -10,6 +10,7 @@
 
 import argparse
 import json
+import math
 import statistics
 import sys
 import time
@@ -48,6 +49,30 @@ def _fmt_hits(hits: list[dict]) -> str:
             title += f"（影片：{h['movieTitle']}）"
         lines.append(f"- {title}")
     return "\n".join(lines) if lines else "（无结果）"
+
+
+def ranking_metrics(hits: list[dict], expected_ids: list[int], top_k: int) -> dict[str, float]:
+    """基于人工标注相关文档计算 Recall@K、MRR 与 nDCG@K。"""
+    relevant = set(expected_ids)
+    if not relevant:
+        raise ValueError("expected_ids must contain at least one relevant document id")
+    ranked_ids = [int(hit["id"]) for hit in hits[:top_k]]
+    matched = [doc_id for doc_id in ranked_ids if doc_id in relevant]
+    reciprocal_rank = 0.0
+    dcg = 0.0
+    for rank, doc_id in enumerate(ranked_ids, start=1):
+        if doc_id in relevant:
+            if reciprocal_rank == 0.0:
+                reciprocal_rank = 1.0 / rank
+            dcg += 1.0 / math.log2(rank + 1)
+    ideal_hits = min(len(relevant), top_k)
+    ideal_dcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+    return {
+        "hit": float(bool(matched)),
+        "recall": len(set(matched)) / len(relevant),
+        "reciprocal_rank": reciprocal_rank,
+        "ndcg": dcg / ideal_dcg if ideal_dcg else 0.0,
+    }
 
 
 def judge_methods(llm, query: str, hits_by_method: dict[str, list[dict]],
@@ -106,6 +131,20 @@ def write_markdown_report(report: dict, path: str) -> None:
         lines.append(
             f"| {name} | {metrics['avg_ms']:.1f} ms | {metrics['p50_ms']:.1f} ms | "
             f"{metrics['p95_ms']:.1f} ms | {metrics['errors']} | {hit_text} |")
+    ground_truth = report.get("groundTruth")
+    if ground_truth:
+        lines.extend([
+            "",
+            f"## 人工标注检索指标（{ground_truth['labeledQueries']} 条）",
+            "",
+            f"| 方法 | Hit@{report['top_k']} | Recall@{report['top_k']} | MRR | nDCG@{report['top_k']} |",
+            "|---|---:|---:|---:|---:|",
+        ])
+        for name, metrics in report["methods"].items():
+            lines.append(
+                f"| {name} | {metrics['hit_at_k'] * 100:.1f}% | "
+                f"{metrics['recall_at_k'] * 100:.1f}% | {metrics['mrr']:.3f} | "
+                f"{metrics['ndcg_at_k']:.3f} |")
     comparison = report.get("comparison")
     if comparison:
         lines.extend([
@@ -141,7 +180,7 @@ def main() -> None:
     args = parser.parse_args()
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    queries = [{"query": q["query"], "index": idx}
+    queries = [{**q, "index": idx}
                for idx, items in dataset.items() for q in items]
     selected_methods = {name: METHODS[name] for name in args.methods}
     llm = get_reasoner_llm() if not args.skip_judge else None
@@ -183,14 +222,20 @@ def main() -> None:
     print(f"数据集 {len(queries)} 条查询，methods={','.join(selected_methods)}，top_k={args.top_k}，"
           f"判官={'off' if args.skip_judge else 'on'}\n")
 
-    stats: dict[str, dict] = {m: {"latencies": [], "hits": 0, "errors": 0}
+    stats: dict[str, dict] = {
+        m: {"latencies": [], "hits": 0, "errors": 0, "ranking": []}
                               for m in selected_methods}
     details = []
 
     for i, item in enumerate(queries, 1):
         query, index = item["query"], item["index"]
         es_index = MOVIE_VEC_INDEX if index == "movie" else REVIEW_VEC_INDEX
-        row = {"query": query, "index": index}
+        row = {
+            "query": query,
+            "index": index,
+            "category": item.get("category"),
+            "expected_ids": item.get("expected_ids", []),
+        }
         hits_by_method: dict[str, list[dict]] = {}
         for name, fn in selected_methods.items():
             try:
@@ -200,6 +245,11 @@ def main() -> None:
                 ms = (time.perf_counter() - t0) * 1000
                 stats[name]["latencies"].append(ms)
                 row[f"{name}_ms"] = round(ms, 1)
+                expected_ids = item.get("expected_ids") or []
+                if expected_ids:
+                    metrics = ranking_metrics(hits, expected_ids, args.top_k)
+                    stats[name]["ranking"].append(metrics)
+                    row[f"{name}_ranking"] = metrics
             except Exception as e:
                 stats[name]["errors"] += 1
                 row[f"{name}_error"] = str(e)[:80]
@@ -231,6 +281,9 @@ def main() -> None:
         "methodsSelected": list(selected_methods),
         "methods": {},
     }
+    labeled_queries = sum(bool(item.get("expected_ids")) for item in queries)
+    if labeled_queries:
+        report["groundTruth"] = {"labeledQueries": labeled_queries}
     for name, s in stats.items():
         lats = sorted(s["latencies"])
         avg = statistics.fmean(lats) if lats else 0.0
@@ -248,7 +301,26 @@ def main() -> None:
             "judged_hits": s["hits"],
             "hit_rate": s["hits"] / max(1, successful) if llm is not None else None,
         }
+        if s["ranking"]:
+            report["methods"][name].update({
+                "hit_at_k": statistics.fmean(x["hit"] for x in s["ranking"]),
+                "recall_at_k": statistics.fmean(x["recall"] for x in s["ranking"]),
+                "mrr": statistics.fmean(x["reciprocal_rank"] for x in s["ranking"]),
+                "ndcg_at_k": statistics.fmean(x["ndcg"] for x in s["ranking"]),
+            })
     print("===============================================")
+    if labeled_queries:
+        print(f"\n========== 人工标注指标（{labeled_queries} 条，Top {args.top_k}） ==========")
+        print(f"{'方法':<8}{'Hit@K':>10}{'Recall@K':>12}{'MRR':>10}{'nDCG@K':>10}")
+        for name, metrics in report["methods"].items():
+            if "hit_at_k" not in metrics:
+                continue
+            print(
+                f"{name:<8}{metrics['hit_at_k'] * 100:>9.1f}%"
+                f"{metrics['recall_at_k'] * 100:>11.1f}%"
+                f"{metrics['mrr']:>10.3f}{metrics['ndcg_at_k']:>10.3f}"
+            )
+        print("===================================================")
 
     if llm is not None and all(name in report["methods"] for name in METHODS):
         methods = report["methods"]

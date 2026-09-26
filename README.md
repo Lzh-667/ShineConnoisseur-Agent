@@ -69,8 +69,9 @@ MySQL/Redis/Elasticsearch 容器执行真实依赖集成测试。
 测试分层：工具层（mock MySQL/Redis/ES/LLM，覆盖降级分支）、API 层（TestClient + FakeAgent，覆盖限流/SSE/鉴权）、
 RRF 纯逻辑、token 用量统计。
 
-最近一次本地验收：**88 个单元测试通过**，以及 Docker MySQL/Redis/Elasticsearch 上的
-**3 个真实依赖集成测试通过**。
+最近一次本地验收：**91 个单元测试通过**。CI 另配置 **4 个真实依赖集成测试**，除中间件
+连通性与 Redis 会话读写外，还覆盖真实 Elasticsearch 写入 → BM25/KNN/RRF → LangChain
+工具结构化输出的完整检索链路；该链路用固定测试向量替代外部付费 Embedding API。
 
 ## RAG 评估
 
@@ -87,12 +88,25 @@ RRF 纯逻辑、token 用量统计。
 评测会先检查 ES、Embedding API，以及启用判官时的 LLM API；无效密钥会立即失败且不会写入误导性报告。
 `--methods` 可用于单独评测 `bm25`、`knn` 或 `hybrid`（逗号分隔）。
 `--prewarm-embeddings` 会批量填充 Redis 查询向量缓存，用于测量稳定态检索延迟；报告会明确标注是否预热。
-判官会在一次调用中同时比较同一查询的所有检索方法，减少随机偏差并将 30 条数据集的判官调用量从 90 次降到 30 次。
+判官会在一次调用中同时比较同一查询的所有检索方法，减少随机偏差；当前 26 条数据集只需
+26 次判官调用，而不是按三种检索方法分别调用 78 次。
 
-需 ES 向量索引已同步。数据集 `scripts/eval_dataset.json`（30 条自然语言查询），
-LLM 判官逐条判断「检索结果能否回答查询」，输出各方法平均/P50/P95 延迟与命中率（`--out` 可导出 JSON）。
+需 ES 向量索引已同步。数据集 `scripts/eval_dataset.json` 包含人工标注的相关文档 ID 和查询
+类别。评测输出 Hit@K、Recall@K、MRR、nDCG@K 以及平均/P50/P95 延迟；LLM 判官是可选的
+辅助指标，不作为人工标注指标的替代（`--out` 可导出逐查询 JSON）。
 
-最近一次 Docker 稳定态评测（2026-09-26，Top 5，30 条查询，Embedding 缓存已预热）：
+当前人工标注数据集的 BM25 基线（2026-09-26，Top 5，26 条查询）：
+
+| 方法 | Hit@5 | Recall@5 | MRR | nDCG@5 | 平均延迟 | P95 |
+|---|---:|---:|---:|---:|---:|---:|
+| BM25 | 76.9% | 67.9% | 0.662 | 0.642 | 35.7 ms | 41.2 ms |
+
+可复查的逐查询结果见 [`reports/rag-labeled-bm25.md`](reports/rag-labeled-bm25.md) 与
+[`reports/rag-labeled-bm25.json`](reports/rag-labeled-bm25.json)。KNN/Hybrid 的新口径结果需
+在 Embedding 服务可用时重新执行，不沿用旧数据推断。
+
+历史 Docker 稳定态评测（2026-09-26，旧版 30 条查询，Top 5，Embedding 缓存已预热，
+仅使用 LLM 判官）：
 
 | 方法 | 判官命中率 | 平均延迟 | P95 |
 |---|---:|---:|---:|
@@ -100,7 +114,8 @@ LLM 判官逐条判断「检索结果能否回答查询」，输出各方法平�
 | KNN | 66.7% | 23.1 ms | 26.2 ms |
 | Hybrid RRF | **66.7%** | 47.3 ms | 57.8 ms |
 
-Hybrid 相比 BM25 提升 **23.4 个百分点**；详细结果见
+在该历史判官口径下，KNN 与 Hybrid 均比 BM25 高 **23.3 个百分点**，Hybrid 未超过 KNN
+且延迟更高，因此不将其表述为全面优于 KNN。旧版详细结果见
 [`reports/rag-full.md`](reports/rag-full.md) 与 [`reports/rag-full.json`](reports/rag-full.json)。
 
 ## ES 语义检索说明
@@ -114,6 +129,8 @@ Hybrid 相比 BM25 提升 **23.4 个百分点**；详细结果见
 
 完整组件图、对话时序图、可靠性设计和 PromQL 示例见
 [架构文档](docs/architecture.md)。
+
+面试演示流程、代表性问题和讲解要点见 [演示手册](docs/demo.md)。
 
 ```
 app/

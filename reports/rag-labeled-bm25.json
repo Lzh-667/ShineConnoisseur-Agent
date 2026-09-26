@@ -1,0 +1,449 @@
+{
+  "generatedAt": "2026-09-26T08:24:28.679663+00:00",
+  "top_k": 5,
+  "queries": 26,
+  "judgeEnabled": false,
+  "embeddingCachePrewarmed": false,
+  "methodsSelected": [
+    "bm25"
+  ],
+  "methods": {
+    "bm25": {
+      "avg_ms": 35.7,
+      "p50_ms": 36.7,
+      "p95_ms": 41.2,
+      "errors": 0,
+      "judged_hits": 0,
+      "hit_rate": null,
+      "hit_at_k": 0.7692307692307693,
+      "recall_at_k": 0.6794871794871795,
+      "mrr": 0.6615384615384615,
+      "ndcg_at_k": 0.6417993480343808
+    }
+  },
+  "groundTruth": {
+    "labeledQueries": 26
+  },
+  "details": [
+    {
+      "query": "讲越狱的经典电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        1
+      ],
+      "bm25_ms": 33.8,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 0.2,
+        "ndcg": 0.38685280723454163
+      }
+    },
+    {
+      "query": "人工智能控制虚拟世界的科幻片",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        31
+      ],
+      "bm25_ms": 35.7,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "ndcg": 0.6309297535714575
+      }
+    },
+    {
+      "query": "适合全家一起看的动画电影",
+      "index": "movie",
+      "category": "filter",
+      "expected_ids": [
+        17,
+        33,
+        36,
+        38,
+        39
+      ],
+      "bm25_ms": 41.1,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "香港警匪片经典",
+      "index": "movie",
+      "category": "filter",
+      "expected_ids": [
+        16,
+        54
+      ],
+      "bm25_ms": 28.8,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 0.5,
+        "reciprocal_rank": 1.0,
+        "ndcg": 0.6131471927654584
+      }
+    },
+    {
+      "query": "关于沉船的爱情电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        4
+      ],
+      "bm25_ms": 38.8,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "诺兰导演的作品",
+      "index": "movie",
+      "category": "entity",
+      "expected_ids": [
+        7,
+        8,
+        23
+      ],
+      "bm25_ms": 39.5,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "宫崎骏的动画",
+      "index": "movie",
+      "category": "entity",
+      "expected_ids": [
+        5,
+        33,
+        37,
+        51
+      ],
+      "bm25_ms": 37.4,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "1994年的经典电影",
+      "index": "movie",
+      "category": "structured",
+      "expected_ids": [
+        1,
+        3,
+        22,
+        36,
+        45,
+        57
+      ],
+      "bm25_ms": 34.1,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 0.6666666666666666,
+        "reciprocal_rank": 1.0,
+        "ndcg": 0.830419897363192
+      }
+    },
+    {
+      "query": "关于战争反思的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        6,
+        21,
+        32,
+        41
+      ],
+      "bm25_ms": 39.2,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 0.25,
+        "reciprocal_rank": 0.5,
+        "ndcg": 0.24630238874073
+      }
+    },
+    {
+      "query": "太空冒险科幻片",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        7
+      ],
+      "bm25_ms": 31.9,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "关于父子关系和逆境成长的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        18
+      ],
+      "bm25_ms": 40.1,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "改变过去导致蝴蝶效应的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        58
+      ],
+      "bm25_ms": 35.6,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "关于家庭与美食的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        46
+      ],
+      "bm25_ms": 41.2,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "国产卧底悬疑犯罪片",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        16
+      ],
+      "bm25_ms": 32.3,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "王家卫导演的电影",
+      "index": "movie",
+      "category": "entity",
+      "expected_ids": [
+        57
+      ],
+      "bm25_ms": 37.7,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "关于二战和战争创伤的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        6,
+        21,
+        32,
+        41
+      ],
+      "bm25_ms": 39.1,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 0.25,
+        "reciprocal_rank": 0.5,
+        "ndcg": 0.24630238874073
+      }
+    },
+    {
+      "query": "关于音乐梦想的电影",
+      "index": "movie",
+      "category": "semantic",
+      "expected_ids": [
+        12,
+        35,
+        39,
+        41
+      ],
+      "bm25_ms": 44.4,
+      "bm25_ranking": {
+        "hit": 0.0,
+        "recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg": 0.0
+      }
+    },
+    {
+      "query": "肖申克的救赎",
+      "index": "movie",
+      "category": "exact",
+      "expected_ids": [
+        1
+      ],
+      "bm25_ms": 39.5,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "克里斯托弗·诺兰拍的太空电影",
+      "index": "movie",
+      "category": "mixed",
+      "expected_ids": [
+        7
+      ],
+      "bm25_ms": 40.1,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "1994年上映的王家卫爱情片",
+      "index": "movie",
+      "category": "mixed",
+      "expected_ids": [
+        57
+      ],
+      "bm25_ms": 36.7,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "关于肖申克的救赎与希望的影评",
+      "index": "review",
+      "category": "entity",
+      "expected_ids": [
+        22,
+        36
+      ],
+      "bm25_ms": 32.2,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "讨论禁闭岛结局反转的影评",
+      "index": "review",
+      "category": "semantic",
+      "expected_ids": [
+        39,
+        40
+      ],
+      "bm25_ms": 33.2,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "关于自由和希望的影评",
+      "index": "review",
+      "category": "semantic",
+      "expected_ids": [
+        22,
+        36
+      ],
+      "bm25_ms": 32.2,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "含有详细剧情剧透的影评",
+      "index": "review",
+      "category": "filter",
+      "expected_ids": [
+        22,
+        36,
+        39
+      ],
+      "bm25_ms": 28.6,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "ndcg": 0.7328286204777911
+      }
+    },
+    {
+      "query": "关于重庆森林观后感的影评",
+      "index": "review",
+      "category": "entity",
+      "expected_ids": [
+        38
+      ],
+      "bm25_ms": 27.1,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "query": "讨论逃避现实和心理困境的影评",
+      "index": "review",
+      "category": "semantic",
+      "expected_ids": [
+        39,
+        40
+      ],
+      "bm25_ms": 27.5,
+      "bm25_ranking": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg": 1.0
+      }
+    }
+  ]
+}

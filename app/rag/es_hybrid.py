@@ -96,7 +96,7 @@ def index_movies(movies: list[dict]) -> int:
                 "content_embedding": vec,
             },
         })
-    ok, _ = bulk(get_es(), actions, chunk_size=50, request_timeout=60)
+    ok, _ = bulk(get_es().options(request_timeout=60), actions, chunk_size=50)
     return ok
 
 
@@ -122,7 +122,7 @@ def index_reviews(reviews: list[dict]) -> int:
                 "content_embedding": vec,
             },
         })
-    ok, _ = bulk(get_es(), actions, chunk_size=50, request_timeout=60)
+    ok, _ = bulk(get_es().options(request_timeout=60), actions, chunk_size=50)
     return ok
 
 
