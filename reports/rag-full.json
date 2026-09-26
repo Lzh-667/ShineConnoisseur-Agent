@@ -1,0 +1,344 @@
+{
+  "generatedAt": "2026-09-26T07:47:26.887381+00:00",
+  "top_k": 5,
+  "queries": 30,
+  "judgeEnabled": true,
+  "embeddingCachePrewarmed": true,
+  "methodsSelected": [
+    "bm25",
+    "knn",
+    "hybrid"
+  ],
+  "methods": {
+    "bm25": {
+      "avg_ms": 22.9,
+      "p50_ms": 22.9,
+      "p95_ms": 30.4,
+      "errors": 0,
+      "judged_hits": 13,
+      "hit_rate": 0.43333333333333335
+    },
+    "knn": {
+      "avg_ms": 23.1,
+      "p50_ms": 22.9,
+      "p95_ms": 26.2,
+      "errors": 0,
+      "judged_hits": 20,
+      "hit_rate": 0.6666666666666666
+    },
+    "hybrid": {
+      "avg_ms": 47.3,
+      "p50_ms": 49.3,
+      "p95_ms": 57.8,
+      "errors": 0,
+      "judged_hits": 20,
+      "hit_rate": 0.6666666666666666
+    }
+  },
+  "comparison": {
+    "hybrid_vs_bm25_pp": 23.3,
+    "hybrid_vs_knn_pp": 0.0
+  },
+  "details": [
+    {
+      "query": "讲越狱的经典电影",
+      "index": "movie",
+      "bm25_ms": 41.6,
+      "knn_ms": 26.2,
+      "hybrid_ms": 57.8,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于人工智能觉醒的科幻片",
+      "index": "movie",
+      "bm25_ms": 29.2,
+      "knn_ms": 25.6,
+      "hybrid_ms": 53.3,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "适合全家一起看的动画电影",
+      "index": "movie",
+      "bm25_ms": 28.8,
+      "knn_ms": 25.8,
+      "hybrid_ms": 69.1,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "香港警匪片经典",
+      "index": "movie",
+      "bm25_ms": 19.6,
+      "knn_ms": 24.0,
+      "hybrid_ms": 43.2,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于沉船的爱情电影",
+      "index": "movie",
+      "bm25_ms": 30.4,
+      "knn_ms": 23.1,
+      "hybrid_ms": 55.2,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "诺兰导演的作品",
+      "index": "movie",
+      "bm25_ms": 25.7,
+      "knn_ms": 24.4,
+      "hybrid_ms": 55.4,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "宫崎骏的动画",
+      "index": "movie",
+      "bm25_ms": 22.3,
+      "knn_ms": 22.6,
+      "hybrid_ms": 49.6,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "1994年的经典电影",
+      "index": "movie",
+      "bm25_ms": 24.0,
+      "knn_ms": 23.9,
+      "hybrid_ms": 49.9,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于战争反思的电影",
+      "index": "movie",
+      "bm25_ms": 24.3,
+      "knn_ms": 22.9,
+      "hybrid_ms": 49.7,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "太空冒险科幻片",
+      "index": "movie",
+      "bm25_ms": 19.2,
+      "knn_ms": 23.2,
+      "hybrid_ms": 40.7,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于父子关系的电影",
+      "index": "movie",
+      "bm25_ms": 26.8,
+      "knn_ms": 24.4,
+      "hybrid_ms": 51.4,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "时间循环题材的电影",
+      "index": "movie",
+      "bm25_ms": 23.3,
+      "knn_ms": 24.4,
+      "hybrid_ms": 53.1,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "关于美食的电影",
+      "index": "movie",
+      "bm25_ms": 22.9,
+      "knn_ms": 23.5,
+      "hybrid_ms": 50.8,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "成龙的动作片",
+      "index": "movie",
+      "bm25_ms": 22.1,
+      "knn_ms": 30.2,
+      "hybrid_ms": 51.2,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "国产悬疑犯罪片",
+      "index": "movie",
+      "bm25_ms": 24.7,
+      "knn_ms": 22.9,
+      "hybrid_ms": 50.9,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "王家卫的电影",
+      "index": "movie",
+      "bm25_ms": 21.4,
+      "knn_ms": 21.7,
+      "hybrid_ms": 45.7,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于二战的电影",
+      "index": "movie",
+      "bm25_ms": 23.7,
+      "knn_ms": 22.8,
+      "hybrid_ms": 45.2,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于程序员创业的电影",
+      "index": "movie",
+      "bm25_ms": 23.5,
+      "knn_ms": 21.3,
+      "hybrid_ms": 49.4,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "关于音乐梦想的电影",
+      "index": "movie",
+      "bm25_ms": 24.8,
+      "knn_ms": 22.8,
+      "hybrid_ms": 49.3,
+      "bm25_hit": false,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于自闭症天才的电影",
+      "index": "movie",
+      "bm25_ms": 23.3,
+      "knn_ms": 20.7,
+      "hybrid_ms": 49.2,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "吐槽某部电影的影评",
+      "index": "review",
+      "bm25_ms": 17.6,
+      "knn_ms": 26.0,
+      "hybrid_ms": 44.0,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "强烈推荐某部电影的影评",
+      "index": "review",
+      "bm25_ms": 17.2,
+      "knn_ms": 21.1,
+      "hybrid_ms": 37.3,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于肖申克的救赎的影评",
+      "index": "review",
+      "bm25_ms": 20.6,
+      "knn_ms": 20.6,
+      "hybrid_ms": 40.2,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "觉得某部片被高估的影评",
+      "index": "review",
+      "bm25_ms": 20.4,
+      "knn_ms": 21.7,
+      "hybrid_ms": 40.7,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "讨论电影结局的影评",
+      "index": "review",
+      "bm25_ms": 19.4,
+      "knn_ms": 22.8,
+      "hybrid_ms": 44.5,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    },
+    {
+      "query": "关于演员演技的影评",
+      "index": "review",
+      "bm25_ms": 18.5,
+      "knn_ms": 20.7,
+      "hybrid_ms": 37.4,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "关于电影配乐的影评",
+      "index": "review",
+      "bm25_ms": 16.9,
+      "knn_ms": 20.3,
+      "hybrid_ms": 38.7,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "关于科幻片特效的影评",
+      "index": "review",
+      "bm25_ms": 16.2,
+      "knn_ms": 20.3,
+      "hybrid_ms": 39.8,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "关于爱情片结局的影评",
+      "index": "review",
+      "bm25_ms": 19.3,
+      "knn_ms": 21.8,
+      "hybrid_ms": 37.9,
+      "bm25_hit": false,
+      "knn_hit": false,
+      "hybrid_hit": false
+    },
+    {
+      "query": "含剧透的影评",
+      "index": "review",
+      "bm25_ms": 18.5,
+      "knn_ms": 21.5,
+      "hybrid_ms": 37.9,
+      "bm25_hit": true,
+      "knn_hit": true,
+      "hybrid_hit": true
+    }
+  ]
+}

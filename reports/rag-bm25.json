@@ -1,0 +1,171 @@
+{
+  "generatedAt": "2026-09-26T07:26:01.676718+00:00",
+  "top_k": 5,
+  "queries": 30,
+  "judgeEnabled": false,
+  "methodsSelected": [
+    "bm25"
+  ],
+  "methods": {
+    "bm25": {
+      "avg_ms": 37.8,
+      "p50_ms": 37.3,
+      "p95_ms": 46.8,
+      "errors": 0,
+      "judged_hits": 0,
+      "hit_rate": null
+    }
+  },
+  "details": [
+    {
+      "query": "讲越狱的经典电影",
+      "index": "movie",
+      "bm25_ms": 72.8
+    },
+    {
+      "query": "关于人工智能觉醒的科幻片",
+      "index": "movie",
+      "bm25_ms": 43.7
+    },
+    {
+      "query": "适合全家一起看的动画电影",
+      "index": "movie",
+      "bm25_ms": 45.7
+    },
+    {
+      "query": "香港警匪片经典",
+      "index": "movie",
+      "bm25_ms": 29.0
+    },
+    {
+      "query": "关于沉船的爱情电影",
+      "index": "movie",
+      "bm25_ms": 36.6
+    },
+    {
+      "query": "诺兰导演的作品",
+      "index": "movie",
+      "bm25_ms": 37.6
+    },
+    {
+      "query": "宫崎骏的动画",
+      "index": "movie",
+      "bm25_ms": 31.0
+    },
+    {
+      "query": "1994年的经典电影",
+      "index": "movie",
+      "bm25_ms": 37.1
+    },
+    {
+      "query": "关于战争反思的电影",
+      "index": "movie",
+      "bm25_ms": 41.7
+    },
+    {
+      "query": "太空冒险科幻片",
+      "index": "movie",
+      "bm25_ms": 29.0
+    },
+    {
+      "query": "关于父子关系的电影",
+      "index": "movie",
+      "bm25_ms": 35.9
+    },
+    {
+      "query": "时间循环题材的电影",
+      "index": "movie",
+      "bm25_ms": 43.8
+    },
+    {
+      "query": "关于美食的电影",
+      "index": "movie",
+      "bm25_ms": 46.8
+    },
+    {
+      "query": "成龙的动作片",
+      "index": "movie",
+      "bm25_ms": 42.9
+    },
+    {
+      "query": "国产悬疑犯罪片",
+      "index": "movie",
+      "bm25_ms": 38.3
+    },
+    {
+      "query": "王家卫的电影",
+      "index": "movie",
+      "bm25_ms": 38.8
+    },
+    {
+      "query": "关于二战的电影",
+      "index": "movie",
+      "bm25_ms": 41.0
+    },
+    {
+      "query": "关于程序员创业的电影",
+      "index": "movie",
+      "bm25_ms": 41.6
+    },
+    {
+      "query": "关于音乐梦想的电影",
+      "index": "movie",
+      "bm25_ms": 41.5
+    },
+    {
+      "query": "关于自闭症天才的电影",
+      "index": "movie",
+      "bm25_ms": 37.3
+    },
+    {
+      "query": "吐槽某部电影的影评",
+      "index": "review",
+      "bm25_ms": 33.5
+    },
+    {
+      "query": "强烈推荐某部电影的影评",
+      "index": "review",
+      "bm25_ms": 33.3
+    },
+    {
+      "query": "关于肖申克的救赎的影评",
+      "index": "review",
+      "bm25_ms": 41.3
+    },
+    {
+      "query": "觉得某部片被高估的影评",
+      "index": "review",
+      "bm25_ms": 33.0
+    },
+    {
+      "query": "讨论电影结局的影评",
+      "index": "review",
+      "bm25_ms": 30.4
+    },
+    {
+      "query": "关于演员演技的影评",
+      "index": "review",
+      "bm25_ms": 29.2
+    },
+    {
+      "query": "关于电影配乐的影评",
+      "index": "review",
+      "bm25_ms": 33.7
+    },
+    {
+      "query": "关于科幻片特效的影评",
+      "index": "review",
+      "bm25_ms": 28.5
+    },
+    {
+      "query": "关于爱情片结局的影评",
+      "index": "review",
+      "bm25_ms": 28.8
+    },
+    {
+      "query": "含剧透的影评",
+      "index": "review",
+      "bm25_ms": 29.8
+    }
+  ]
+}
